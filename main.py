@@ -21,9 +21,31 @@ except ImportError:
     SHAP_AVAILABLE = False
     print("WARNING: shap not installed — root cause analysis will be disabled.")
 
+# Defensive Earth Engine import + init — live satellite lookups are a bonus feature.
+# If EE can't initialize (missing key, quota, network issue), /predict_reserve must
+# still work by falling back to the cached grid, never crash the whole API.
+EE_AVAILABLE = False
+try:
+    import ee
+
+    SERVICE_ACCOUNT_EMAIL = "manganese-dashboard@ps01-507505.iam.gserviceaccount.com"
+    # Render "Secret Files" are mounted at /etc/secrets/<filename> at deploy time.
+    EE_KEY_PATH = "/etc/secrets/gee_key.json"
+
+    if os.path.exists(EE_KEY_PATH):
+        _ee_credentials = ee.ServiceAccountCredentials(SERVICE_ACCOUNT_EMAIL, EE_KEY_PATH)
+        ee.Initialize(_ee_credentials)
+        EE_AVAILABLE = True
+        print("Earth Engine initialized — live satellite lookups enabled.")
+    else:
+        print(f"WARNING: {EE_KEY_PATH} not found — live satellite lookups disabled, using cached grid only.")
+except Exception as e:
+    EE_AVAILABLE = False
+    print(f"WARNING: Earth Engine init failed — live satellite lookups disabled: {e}")
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-app = FastAPI(title="Manganese Reserve & Shortfall API", version="1.0")
+app = FastAPI(title="Manganese Reserve & Shortfall API", version="1.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,6 +71,17 @@ except FileNotFoundError:
     production_model = None
     prod_feature_cols = None
     print("WARNING: production_model.pkl or prod_feature_columns.pkl not found — /predict_shortfall will fail.")
+
+try:
+    manganese_model = joblib.load(os.path.join(BASE_DIR, "manganese_model.pkl"))
+    reserve_feature_cols = joblib.load(os.path.join(BASE_DIR, "feature_columns.pkl"))
+    X_train_reserve = joblib.load(os.path.join(BASE_DIR, "X_train.pkl"))
+    X_train_means = X_train_reserve.mean()
+except FileNotFoundError:
+    manganese_model = None
+    reserve_feature_cols = None
+    X_train_means = None
+    print("WARNING: manganese_model.pkl / feature_columns.pkl / X_train.pkl not found — live reserve scoring disabled.")
 
 # Build the SHAP explainer once at startup (expensive to rebuild per-request)
 shap_explainer = None
@@ -92,6 +125,55 @@ def classify_risk(shortfall_percentage):
         return "MEDIUM"
     else:
         return "HIGH"
+
+def get_live_satellite_features(lat, lon):
+    """
+    Live Earth Engine extraction for a single coordinate. Mirrors the exact
+    feature set the exploration model was trained on: NDVI, iron oxide index,
+    clay hydroxyl index, elevation, slope, and MODIS land surface temperature.
+    Raises on any failure — caller is responsible for falling back.
+    """
+    point = ee.Geometry.Point([lon, lat])
+
+    s2 = (
+        ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+        .filterBounds(point)
+        .filterDate("2024-01-01", "2024-12-31")
+        .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 30))
+        .median()
+    )
+    ndvi = s2.normalizedDifference(["B8", "B4"]).rename("NDVI")
+    iron_oxide = s2.select("B4").divide(s2.select("B2")).rename("Iron_Oxide_Index")
+    clay_index = s2.select("B11").divide(s2.select("B12")).rename("Clay_Hydroxyl_Index")
+
+    dem = ee.Image("USGS/SRTMGL1_003")
+    elevation = dem.rename("elevation")
+    slope = ee.Terrain.slope(dem).rename("slope")
+
+    lst = (
+        ee.ImageCollection("MODIS/061/MOD11A2")
+        .filterDate("2024-01-01", "2024-12-31")
+        .select("LST_Day_1km")
+        .mean()
+    )
+
+    combined = ndvi.addBands(iron_oxide).addBands(clay_index).addBands(elevation).addBands(slope).addBands(lst)
+    result = combined.reduceRegion(reducer=ee.Reducer.first(), geometry=point, scale=100).getInfo()
+    return result
+
+def score_reserve_live(lat, lon):
+    """
+    Runs a real, live satellite extraction + model scoring for an arbitrary
+    coordinate. Raises on any failure (missing bands, no cloud-free image,
+    EE quota, etc.) so the caller can fall back to the cached grid.
+    """
+    feats = get_live_satellite_features(lat, lon)
+    input_row = pd.DataFrame([feats])[reserve_feature_cols]
+    # Fill any missing bands (e.g. no cloud-free Sentinel-2 pass for this tile)
+    # with the training set's mean for that feature, same as during training.
+    input_row = input_row.fillna(X_train_means)
+    prob = float(manganese_model.predict_proba(input_row)[0][1])
+    return prob
 
 def get_root_causes(input_row_df, top_n=4):
     """SHAP breakdown to explain why production fell short. Fails safe."""
@@ -144,6 +226,7 @@ def health_check():
         "reserve_cache_loaded": reserve_cache is not None,
         "production_model_loaded": production_model is not None,
         "shap_available": SHAP_AVAILABLE and shap_explainer is not None,
+        "live_satellite_available": EE_AVAILABLE and manganese_model is not None,
     }
 
 @app.post("/predict_reserve")
@@ -151,6 +234,23 @@ def predict_reserve(req: ReserveRequest):
     if reserve_cache is None:
         raise HTTPException(status_code=503, detail="Reserve cache not loaded on server.")
 
+    # --- Attempt 1: live satellite extraction for the EXACT requested coordinate ---
+    if EE_AVAILABLE and manganese_model is not None:
+        try:
+            probability = score_reserve_live(req.lat, req.lon)
+            return {
+                "query_lat": req.lat,
+                "query_lon": req.lon,
+                "probability": round(probability, 4),
+                "source": "live_satellite",
+                "note": "Computed from a real-time Sentinel-2 / MODIS / SRTM extraction at these exact coordinates.",
+            }
+        except Exception as e:
+            # Cloud cover, no image for this tile/date range, EE quota, etc.
+            # Fall through to the cached-grid fallback below rather than failing the request.
+            print(f"Live satellite extraction failed for ({req.lat}, {req.lon}): {e}")
+
+    # --- Attempt 2 (or default, if EE isn't configured): nearest analyzed coordinate ---
     diffs = (reserve_cache["lat"] - req.lat) ** 2 + (reserve_cache["lon"] - req.lon) ** 2
     nearest_idx = diffs.idxmin()
     nearest = reserve_cache.loc[nearest_idx]
@@ -163,6 +263,8 @@ def predict_reserve(req: ReserveRequest):
         "nearest_grid_lon": float(nearest["lon"]),
         "probability": float(nearest["probability"]),
         "grid_distance_degrees": round(distance_deg, 4),
+        "source": "cached_fallback",
+        "note": "Live satellite extraction was unavailable for this coordinate — showing the nearest already-analyzed grid point instead.",
     }
 
 @app.get("/reserve_grid")
