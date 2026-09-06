@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEO-MN // Enterprise Manganese Geological & Production Intelligence</title>
+    <meta name="description" content="Industrial-grade geological deposit mapping and production shortfall risk modeling for manganese mining operations.">
+    
+    <!-- Modern Enterprise Typography: Plus Jakarta Sans + JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2306b6d4' stroke-width='2'><polygon points='12 2 2 7 12 12 22 7 12 2'/><polyline points='2 17 12 22 22 17'/><polyline points='2 12 12 17 22 12'/></svg>">
+</head>
+<body>
+
+<!-- Toast Notification Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Mobile Drawer Toggle -->
+<button class="mobile-toggle" id="mobileToggle" aria-label="Toggle navigation">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+</button>
+
+<div class="app-layout">
+
+    <!-- ── Sidebar Navigation ────────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="brand-badge">
+                <div class="brand-logo-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                        <polyline points="2 17 12 22 22 17"></polyline>
+                        <polyline points="2 12 12 17 22 12"></polyline>
+                    </svg>
+                </div>
+                <div class="brand-meta">
+                    <div class="brand-title">GEO-MN // INTEL</div>
+                    <div class="brand-tag">MINING COMMAND v2.4</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="nav-section-title">PLATFORM MODULES</div>
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-link active" data-section="dashboard">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+                </span>
+                <span class="nav-label">Executive Overview</span>
+            </a>
+            <a href="#" class="nav-link" data-section="reserve">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+                </span>
+                <span class="nav-label">Satellite Prospecting</span>
+            </a>
+            <a href="#" class="nav-link" data-section="shortfall">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                </span>
+                <span class="nav-label">Production Shortfall</span>
+            </a>
+            <a href="#" class="nav-link" data-section="simulator">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+                </span>
+                <span class="nav-label">What-If Simulation</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="telemetry-card">
+                <div class="telemetry-header">
+                    <span class="status-indicator-dot online" id="statusDot"></span>
+                    <span class="telemetry-text" id="statusText">TELEMETRY ONLINE</span>
+                </div>
+                <div class="telemetry-details">
+                    <div class="tel-row">
+                        <span>Active Sector</span>
+                        <span class="mono-badge">Central India</span>
+                    </div>
+                    <div class="tel-row">
+                        <span>Grid Resolution</span>
+                        <span class="mono-badge">0.25° (~27 km)</span>
+                    </div>
+                    <div class="tel-row">
+                        <span>ML Engine</span>
+                        <span class="mono-badge">RF-100 Trees</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ── Main Workspace ────────────────────────────────────── -->
+    <main class="main-content">
+        <!-- Top Command Bar -->
+        <header class="top-command-bar">
+            <div class="breadcrumb-container">
+                <span class="breadcrumb-sector">OPERATIONS</span>
+                <span class="breadcrumb-separator">/</span>
+                <span class="breadcrumb-active" id="pageTitle">Executive Overview</span>
+            </div>
+
+            <div class="top-telemetry-bar">
+                <div class="telemetry-pill">
+                    <span class="dot-beacon"></span>
+                    <span>768 Geocells Synced</span>
+                </div>
+                <div class="telemetry-pill">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    <span>Latency: 8ms</span>
+                </div>
+                <div class="sector-dropdown-pill">
+                    <span>Region: MP / MH / OD Mineral Belt</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="content-view-container">
+
+            <!-- ══════════════════════════════════════════════════════════
+                 MODULE 1: EXECUTIVE OVERVIEW (DASHBOARD)
+                 ══════════════════════════════════════════════════════════ -->
+            <div class="section active" id="section-dashboard">
+                <div class="command-hero-banner">
+                    <div class="hero-left">
+                        <h2>Mining Intelligence & Resource Forecasting</h2>
+                        <p>Real-time fusion of satellite multispectral imagery, Land Surface Temperature (LST), and dispatch fleet operational parameters for manganese mine management.</p>
+                    </div>
+                    <div class="hero-actions">
+                        <button class="action-btn action-btn-primary" data-navigate="reserve">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                            Launch Satellite Prospecting
+                        </button>
+                        <button class="action-btn" data-navigate="shortfall">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                            Run Shift Shortfall Predictor
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Industrial Status Cards -->
+                <div class="command-metrics-grid">
+                    <div class="command-stat-card">
+                        <div class="stat-top">
+                            <span class="stat-tag">INGESTION STATUS</span>
+                            <span class="stat-chip chip-success" id="statApiStatus">HEALTHY</span>
+                        </div>
+                        <div class="stat-main-value">200 OK</div>
+                        <div class="stat-footer-text">FastAPI High-Throughput Service</div>
+                    </div>
+
+                    <div class="command-stat-card">
+                        <div class="stat-top">
+                            <span class="stat-tag">GEOLOGICAL CACHE</span>
+                            <span class="stat-chip chip-cyan" id="statReserveGrid">768 CELLS</span>
+                        </div>
+                        <div class="stat-main-value mono-val">24 × 32</div>
+                        <div class="stat-footer-text">18.0°N–23.75°N // 76.0°E–83.75°E</div>
+                    </div>
+
+                    <div class="command-stat-card">
+                        <div class="stat-top">
+                            <span class="stat-tag">DISPATCH REGRESSOR</span>
+                            <span class="stat-chip chip-cyan" id="statProdModel">ONLINE</span>
+                        </div>
+                        <div class="stat-main-value mono-val">RF (100)</div>
+                        <div class="stat-footer-text">10-Factor Production Efficiency Model</div>
+                    </div>
+
+                    <div class="command-stat-card">
+                        <div class="stat-top">
+                            <span class="stat-tag">ROOT-CAUSE ENGINE</span>
+                            <span class="stat-chip chip-purple" id="statShap">SHAP ACTIVE</span>
+                        </div>
+                        <div class="stat-main-value mono-val">TreeExplainer</div>
+                        <div class="stat-footer-text">Local Feature Attribution Diagnostics</div>
+                    </div>
+                </div>
+
+                <!-- Platform Capability Summary -->
+                <div class="system-architecture-card">
+                    <div class="card-section-header">
+                        <h3>Geological & Operational Telemetry Architecture</h3>
+                        <span class="header-sub">System Documentation & Sensor Sources</span>
+                    </div>
+                    <div class="architecture-specs-grid">
+                        <div class="spec-block">
+                            <div class="spec-num">01</div>
+                            <h4>Multispectral Surface Analysis</h4>
+                            <p>Detects hydrothermal clay alteration (Clay Hydroxyl Index) and gossan cap iron oxides using VNIR/SWIR satellite bands to locate subsurface manganese lenses.</p>
+                        </div>
+                        <div class="spec-block">
+                            <div class="spec-num">02</div>
+                            <h4>MODIS Thermal Radiometry</h4>
+                            <p>Integrates satellite Land Surface Temperature (LST) and NDVI vegetation masking. Open pit bedrock displays distinct thermal inertia compared to heavy foliage.</p>
+                        </div>
+                        <div class="spec-block">
+                            <div class="spec-num">03</div>
+                            <h4>Meteo-Logistical Forecasting</h4>
+                            <p>Correlates precipitation surges, soil saturation, and shovel-truck haulage cycle delays to predict daily tonnage shortfalls before shift completion.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════
+                 MODULE 2: SATELLITE PROSPECTING (RESERVE EXPLORER)
+                 ══════════════════════════════════════════════════════════ -->
+            <div class="section" id="section-reserve">
+                <!-- Location Target Bar -->
+                <div class="target-control-bar">
+                    <div class="coord-input-cluster">
+                        <div class="input-field-wrapper">
+                            <label for="reserveLat">LATITUDE (°N)</label>
+                            <input type="number" id="reserveLat" placeholder="21.8100" step="0.0001" min="16" max="26" value="21.81">
+                        </div>
+                        <div class="input-field-wrapper">
+                            <label for="reserveLon">LONGITUDE (°E)</label>
+                            <input type="number" id="reserveLon" placeholder="80.2300" step="0.0001" min="74" max="86" value="80.23">
+                        </div>
+                        <button class="cmd-btn cmd-btn-primary" id="btnPredictReserve">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            <span>Inspect Coordinates</span>
+                            <span class="spinner"></span>
+                        </button>
+                    </div>
+
+                    <!-- Rapid Sector Preset Chips -->
+                    <div class="preset-chips-cluster">
+                        <span class="preset-lead-text">Preset Sectors:</span>
+                        <button type="button" class="geo-preset-chip" data-lat="21.81" data-lon="80.23">Balaghat Pit [21.81, 80.23]</button>
+                        <button type="button" class="geo-preset-chip" data-lat="21.39" data-lon="79.28">Mansar Ore Zone [21.39, 79.28]</button>
+                        <button type="button" class="geo-preset-chip" data-lat="21.62" data-lon="85.58">Keonjhar Belt [21.62, 85.58]</button>
+                    </div>
+                </div>
+
+                <!-- Map Interface Layout -->
+                <div class="reserve-gis-layout">
+                    <div class="gis-map-card">
+                        <!-- Floating Map Header Controls -->
+                        <div class="floating-map-toolbar">
+                            <div class="segmented-control">
+                                <button type="button" class="seg-btn active" id="btnLayerSatellite">Satellite</button>
+                                <button type="button" class="seg-btn" id="btnLayerThermal">Thermal Map (Satellite)</button>
+                                <button type="button" class="seg-btn" id="btnLayerDark">Dark Grid</button>
+                                <button type="button" class="seg-btn" id="btnLayerStreet">Streets</button>
+                            </div>
+
+                            <div class="map-addon-controls">
+                                <label class="hud-toggle-label">
+                                    <input type="checkbox" id="toggleHeatmapOverlay">
+                                    <span>Deposit Heatmap</span>
+                                </label>
+                                <div class="hud-opacity-slider" id="heatOpacityGroup" style="display:none;">
+                                    <span>Opacity:</span>
+                                    <input type="range" id="heatOpacityRange" min="0.1" max="1" step="0.05" value="0.75">
+                                    <span id="heatOpacityVal" class="mono-text">75%</span>
+                                </div>
+                                <button type="button" class="hud-mini-btn" id="btnResetMap" title="Reset View to Central Belt">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                    <span>Reset Sector</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Live Cursor Coordinate HUD -->
+                        <div class="cursor-coordinate-hud">
+                            <span class="hud-dot"></span>
+                            <span id="cursorCoordReadout">Cursor: 21.0000°N, 80.0000°E</span>
+                        </div>
+
+                        <!-- Leaflet GIS Map Container -->
+                        <div id="reserveMap" class="enterprise-gis-map"></div>
+
+                        <!-- Floating Legend Card -->
+                        <div class="floating-legend-hud">
+                            <div class="legend-hud-top">
+                                <span class="legend-hud-title" id="legendTitle">High-Resolution Satellite Terrain</span>
+                                <span class="legend-hud-source" id="legendSubtitle">Esri World Imagery + Geographic Labels</span>
+                            </div>
+                            <div class="legend-bar-track" id="legendBar"></div>
+                            <div class="legend-labels-row" id="legendLabels">
+                                <span>Dense Foliage</span>
+                                <span>Soil / Vegetation</span>
+                                <span>Exposed Ground / Rock</span>
+                            </div>
+                            <div class="legend-hud-hint" id="legendHint">Click anywhere on the satellite terrain to place a highlighted exploration crosshair.</div>
+                        </div>
+                    </div>
+
+                    <!-- Geological Prospect Telemetry Card -->
+                    <div class="gis-telemetry-sidebar" id="reserveResultPanel">
+                        <div class="telemetry-result-card">
+                            <div class="card-badge-header">
+                                <span class="badge-title">GEOLOGICAL SURVEY TELEMETRY</span>
+                                <span class="badge-status-dot"></span>
+                            </div>
+
+                            <!-- Radial SVG Gauge for Deposit Probability -->
+                            <div class="radial-gauge-container">
+                                <svg class="radial-gauge" viewBox="0 0 120 120">
+                                    <circle class="gauge-bg" cx="60" cy="60" r="48"></circle>
+                                    <circle class="gauge-progress" id="gaugeProgressRing" cx="60" cy="60" r="48"></circle>
+                                </svg>
+                                <div class="gauge-value-box">
+                                    <div class="gauge-num" id="reserveProbValue">—</div>
+                                    <div class="gauge-label">DEPOSIT PROBABILITY</div>
+                                </div>
+                            </div>
+
+                            <div class="geological-classification-badge" id="geolClassBadge">
+                                Evaluating Geological Profile...
+                            </div>
+
+                            <div class="telemetry-specs-list">
+                                <div class="spec-data-row">
+                                    <span class="label">Query Coordinates</span>
+                                    <span class="val mono-text" id="resQueryLatLon">—</span>
+                                </div>
+                                <div class="spec-data-row">
+                                    <span class="label">Nearest Grid Station</span>
+                                    <span class="val mono-text" id="resGridLatLon">—</span>
+                                </div>
+                                <div class="spec-data-row">
+                                    <span class="label">Grid Offset Distance</span>
+                                    <span class="val mono-text" id="resDistance">—</span>
+                                </div>
+                                <div class="spec-data-row">
+                                    <span class="label">Primary Mineral</span>
+                                    <span class="val">Manganese Oxide (Pyrolusite)</span>
+                                </div>
+                            </div>
+
+                            <div class="geological-clarity-notice">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                <span>Confidence indicator represents deposit presence likelihood from satellite spectral signatures, not chemical ore grade percentage.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════
+                 MODULE 3: PRODUCTION SHORTFALL PREDICTOR
+                 ══════════════════════════════════════════════════════════ -->
+            <div class="section" id="section-shortfall">
+                <!-- Operational Presets Strip -->
+                <div class="operational-presets-strip">
+                    <span class="presets-label">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                        Operational Shift Presets:
+                    </span>
+                    <button type="button" class="preset-btn" id="presetOptimal">☀️ Normal Dry Shift</button>
+                    <button type="button" class="preset-btn" id="presetMonsoon">⛈️ Heavy Monsoon Downpour</button>
+                    <button type="button" class="preset-btn" id="presetCrisis">🚜 Fleet Breakdown Crisis</button>
+                </div>
+
+                <form class="enterprise-form" id="shortfallForm">
+                    <div class="operational-fieldset-grid">
+
+                        <!-- Fieldset 1: Fleet & Machinery -->
+                        <div class="fieldset-card">
+                            <div class="fieldset-header">
+                                <span class="fieldset-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                                </span>
+                                <div>
+                                    <h4>Fleet & Machinery Availability</h4>
+                                    <span class="sub">Mechanical uptime and dispatch telemetry</span>
+                                </div>
+                            </div>
+
+                            <div class="param-row">
+                                <div class="param-label-group">
+                                    <label for="sf-equipment_availability">Equipment Availability</label>
+                                    <span class="param-value-pill" id="val-equip-avail">0.85 (85%)</span>
+                                </div>
+                                <input type="range" class="custom-range" id="sf-equipment_availability" min="0" max="1" step="0.01" value="0.85">
+                            </div>
+
+                            <div class="param-two-col">
+                                <div class="number-input-field">
+                                    <label for="sf-equipment_downtime">Downtime (Hours)</label>
+                                    <input type="number" id="sf-equipment_downtime" step="0.1" min="0" value="2.5">
+                                </div>
+                                <div class="number-input-field">
+                                    <label for="sf-maintenance_hours">Maintenance (Hours)</label>
+                                    <input type="number" id="sf-maintenance_hours" step="0.1" min="0" value="4.0">
+                                </div>
+                            </div>
+
+                            <div class="number-input-field">
+                                <label for="sf-truck_count">Active Haul Trucks (Count)</label>
+                                <input type="number" id="sf-truck_count" step="1" min="1" value="15">
+                            </div>
+                        </div>
+
+                        <!-- Fieldset 2: Meteo-Hydrological Conditions -->
+                        <div class="fieldset-card">
+                            <div class="fieldset-header">
+                                <span class="fieldset-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
+                                </span>
+                                <div>
+                                    <h4>Environmental & Weather</h4>
+                                    <span class="sub">Pit drainage and pit surface telemetry</span>
+                                </div>
+                            </div>
+
+                            <div class="param-row">
+                                <div class="param-label-group">
+                                    <label for="sf-rainfall">Precipitation (mm)</label>
+                                    <span class="param-value-pill" id="val-rainfall">12.0 mm</span>
+                                </div>
+                                <input type="range" class="custom-range" id="sf-rainfall" min="0" max="200" step="0.5" value="12.0">
+                            </div>
+
+                            <div class="param-row">
+                                <div class="param-label-group">
+                                    <label for="sf-soil_moisture">Soil Moisture Saturation</label>
+                                    <span class="param-value-pill" id="val-soil-moisture">0.35</span>
+                                </div>
+                                <input type="range" class="custom-range" id="sf-soil_moisture" min="0" max="1" step="0.01" value="0.35">
+                            </div>
+
+                            <div class="number-input-field">
+                                <label for="sf-temperature">Ambient Pit Temperature (°C)</label>
+                                <input type="number" id="sf-temperature" step="0.5" value="32.0">
+                            </div>
+                        </div>
+
+                        <!-- Fieldset 3: Mine Delays & Production Target -->
+                        <div class="fieldset-card highlight-border">
+                            <div class="fieldset-header">
+                                <span class="fieldset-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                </span>
+                                <div>
+                                    <h4>Drill-Blast & Haul Delays</h4>
+                                    <span class="sub">Cycle times and shift production quotas</span>
+                                </div>
+                            </div>
+
+                            <div class="param-row">
+                                <div class="param-label-group">
+                                    <label for="sf-drilling_delay">Drilling Delay (Hours)</label>
+                                    <span class="param-value-pill" id="val-drill-delay">1.2 hrs</span>
+                                </div>
+                                <input type="range" class="custom-range" id="sf-drilling_delay" min="0" max="12" step="0.1" value="1.2">
+                            </div>
+
+                            <div class="param-two-col">
+                                <div class="number-input-field">
+                                    <label for="sf-blast_delay">Blast Delay (Hours)</label>
+                                    <input type="number" id="sf-blast_delay" step="0.1" min="0" value="0.8">
+                                </div>
+                                <div class="number-input-field">
+                                    <label for="sf-haulage_delay">Haulage Delay (Hours)</label>
+                                    <input type="number" id="sf-haulage_delay" step="0.1" min="0" value="1.0">
+                                </div>
+                            </div>
+
+                            <div class="number-input-field target-highlight">
+                                <label for="sf-target_production">Shift Target Production (Tonnes)</label>
+                                <input type="number" id="sf-target_production" step="10" min="100" value="1000">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-submit-row">
+                        <button type="submit" class="cmd-btn cmd-btn-primary cmd-btn-lg" id="btnPredictShortfall">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                            <span>Execute Risk & Shortfall Prediction</span>
+                            <span class="spinner"></span>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Prediction Results Dashboard -->
+                <div class="prediction-results-area" id="shortfallResults" style="display:none;">
+                    <div class="results-header-banner">
+                        <div class="banner-title">
+                            <span class="banner-icon">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                            </span>
+                            <h3>Shift Production Risk Assessment</h3>
+                        </div>
+                        <div id="riskTierBadge" class="risk-pill-badge">EVALUATING</div>
+                    </div>
+
+                    <!-- 4 Metric KPI Cards -->
+                    <div class="kpi-metrics-row">
+                        <div class="kpi-card">
+                            <span class="kpi-label">EFFICIENCY RATIO</span>
+                            <div class="kpi-val mono-val" id="resEfficiency">—</div>
+                            <span class="kpi-sub">Actual vs Design Output</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">FORECAST TONNAGE</span>
+                            <div class="kpi-val mono-val" id="resPredictedProd">—</div>
+                            <span class="kpi-sub" id="resTargetSub">Target: 1,000 Tonnes</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">PROJECTED SHORTFALL</span>
+                            <div class="kpi-val mono-val" id="resShortfallTonnes">—</div>
+                            <span class="kpi-sub" id="resShortfallPct">—</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">ACTIVE RISK FLAGS</span>
+                            <div class="kpi-val mono-val" id="resRiskFlags">—</div>
+                            <span class="kpi-sub">Operational Anomalies</span>
+                        </div>
+                    </div>
+
+                    <!-- Diagnostics & Recommendations Grid -->
+                    <div class="diagnostics-split-grid">
+                        <!-- SHAP Root Cause Attribution -->
+                        <div class="diagnostic-card">
+                            <div class="diag-header">
+                                <h4>SHAP Root-Cause Attribution Diagnostics</h4>
+                                <span class="diag-sub">Quantified operational shortfall drivers</span>
+                            </div>
+                            <div class="root-cause-bars" id="rootCausesContainer"></div>
+                        </div>
+
+                        <!-- Prescriptive AI Engineering Directives -->
+                        <div class="diagnostic-card">
+                            <div class="diag-header">
+                                <h4>Prescriptive Operational Directives</h4>
+                                <span class="diag-sub">Real-time mitigation actions</span>
+                            </div>
+                            <div class="recommendations-list" id="recommendationsContainer"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════
+                 MODULE 4: WHAT-IF SCENARIO SIMULATOR
+                 ══════════════════════════════════════════════════════════ -->
+            <div class="section" id="section-simulator">
+                <div class="sim-header-card">
+                    <div>
+                        <h3>Operational Scenario Modeling & Sensitivity Analysis</h3>
+                        <p>Simulate the impact of fleet reallocation, weather resilience measures, or blast rescheduling before committing capital.</p>
+                    </div>
+                </div>
+
+                <form class="enterprise-form" id="simulatorForm">
+                    <div class="operational-fieldset-grid">
+                        <!-- Sim Fieldset 1 -->
+                        <div class="fieldset-card">
+                            <div class="fieldset-header">
+                                <span class="fieldset-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                                </span>
+                                <div>
+                                    <h4>Simulated Fleet Setup</h4>
+                                    <span class="sub">Hypothetical equipment numbers</span>
+                                </div>
+                            </div>
+                            <div class="param-row">
+                                <div class="param-label-group">
+                                    <label for="sim-equipment_availability">Equipment Availability</label>
+                                    <span class="param-value-pill" id="sim-val-equip-avail">0.85</span>
+                                </div>
+                                <input type="range" class="custom-range" id="sim-equipment_availability" min="0" max="1" step="0.01" value="0.85">
+                            </div>
+                            <div class="param-two-col">
+                                <div class="number-input-field">
+                                    <label for="sim-equipment_downtime">Downtime (h)</label>
+                                    <input type="number" id="sim-equipment_downtime" step="0.1" value="2.5">
+                                </div>
+                                <div class="number-input-field">
+                                    <label for="sim-maintenance_hours">Maintenance (h)</label>
+                                    <input type="number" id="sim-maintenance_hours" step="0.1" value="4.0">
+                                </div>
+                            </div>
+                            <div class="number-input-field">
+                                <label for="sim-truck_count">Simulated Truck Count</label>
+                                <input type="number" id="sim-truck_count" step="1" value="15">
+                            </div>
+                        </div>
+
+                        <!-- Sim Fieldset 2 -->
+                        <div class="fieldset-card">
+                            <div class="fieldset-header">
+                                <span class="fieldset-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
+                                </span>
+                                <div>
+                                    <h4>Weather Stress Testing</h4>
+                                    <span class="sub">Simulated environmental extremes</span>
+                                </div>
+                            </div>
+                            <div class="param-row">
+                                <div class="param-label-group">
+                                    <label for="sim-rainfall">Simulated Rainfall (mm)</label>
+                                    <span class="param-value-pill" id="sim-val-rainfall">12.0 mm</span>
+                                </div>
+                                <input type="range" class="custom-range" id="sim-rainfall" min="0" max="200" step="0.5" value="12.0">
+                            </div>
+                            <div class="param-row">
+                                <div class="param-label-group">
+                                    <label for="sim-soil_moisture">Soil Moisture</label>
+                                    <span class="param-value-pill" id="sim-val-soil-moisture">0.35</span>
+                                </div>
+                                <input type="range" class="custom-range" id="sim-soil_moisture" min="0" max="1" step="0.01" value="0.35">
+                            </div>
+                            <div class="number-input-field">
+                                <label for="sim-temperature">Pit Temperature (°C)</label>
+                                <input type="number" id="sim-temperature" step="0.5" value="32.0">
+                            </div>
+                        </div>
+
+                        <!-- Sim Fieldset 3 -->
+                        <div class="fieldset-card highlight-border">
+                            <div class="fieldset-header">
+                                <span class="fieldset-icon">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                </span>
+                                <div>
+                                    <h4>Delays & Scale Target</h4>
+                                    <span class="sub">Target stress boundaries</span>
+                                </div>
+                            </div>
+                            <div class="param-row">
+                                <div class="param-label-group">
+                                    <label for="sim-drilling_delay">Drilling Delay (h)</label>
+                                    <span class="param-value-pill" id="sim-val-drill-delay">1.2 hrs</span>
+                                </div>
+                                <input type="range" class="custom-range" id="sim-drilling_delay" min="0" max="12" step="0.1" value="1.2">
+                            </div>
+                            <div class="param-two-col">
+                                <div class="number-input-field">
+                                    <label for="sim-blast_delay">Blast Delay (h)</label>
+                                    <input type="number" id="sim-blast_delay" step="0.1" value="0.8">
+                                </div>
+                                <div class="number-input-field">
+                                    <label for="sim-haulage_delay">Haulage Delay (h)</label>
+                                    <input type="number" id="sim-haulage_delay" step="0.1" value="1.0">
+                                </div>
+                            </div>
+                            <div class="number-input-field target-highlight">
+                                <label for="sim-target_production">Scenario Target (Tonnes)</label>
+                                <input type="number" id="sim-target_production" step="10" value="1000">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-submit-row">
+                        <button type="submit" class="cmd-btn cmd-btn-primary cmd-btn-lg" id="btnRunSimulation">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line></svg>
+                            <span>Run Scenario Simulation</span>
+                            <span class="spinner"></span>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Simulation Output -->
+                <div class="prediction-results-area" id="simResults" style="display:none;">
+                    <div class="results-header-banner">
+                        <div class="banner-title">
+                            <span class="banner-icon">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                            </span>
+                            <h3>Simulated Scenario Outcome</h3>
+                        </div>
+                        <div id="simRiskBadge" class="risk-pill-badge">EVALUATING</div>
+                    </div>
+
+                    <div class="kpi-metrics-row">
+                        <div class="kpi-card">
+                            <span class="kpi-label">SIMULATED EFFICIENCY</span>
+                            <div class="kpi-val mono-val" id="simEfficiency">—</div>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">SIMULATED OUTPUT</span>
+                            <div class="kpi-val mono-val" id="simPredictedProd">—</div>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">SIMULATED SHORTFALL</span>
+                            <div class="kpi-val mono-val" id="simShortfallTonnes">—</div>
+                            <span class="kpi-sub" id="simShortfallPct">—</span>
+                        </div>
+                    </div>
+
+                    <!-- Historical Scenario Table -->
+                    <div class="scenario-history-card">
+                        <div class="diag-header">
+                            <h4>Recent Shift Simulations Ledger</h4>
+                            <span class="diag-sub">Multi-scenario variance comparison</span>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="enterprise-table">
+                                <thead>
+                                    <tr>
+                                        <th>RUN</th>
+                                        <th>TARGET</th>
+                                        <th>PROJECTED</th>
+                                        <th>SHORTFALL</th>
+                                        <th>EFFICIENCY</th>
+                                        <th>RISK CLASSIFICATION</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+</div>
+
+<!-- Scripts -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
