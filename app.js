@@ -251,9 +251,6 @@
                 showToast('Please enter valid latitude and longitude coordinates', 'error');
                 return;
             }
-            if (lat < 16 || lat > 26 || lon < 74 || lon > 86) {
-                showToast('Coordinates outside Central Indian Mineral Belt (18°-24°N, 76°-84°E)', 'error');
-            }
             await predictReserve(lat, lon, true);
         });
 
@@ -435,7 +432,6 @@
         const prob = data.probability;
         const pct = (prob * 100).toFixed(1);
 
-        // Update Circular Radial Progress Ring
         const ring = $('#gaugeProgressRing');
         if (ring) {
             const circumference = 301.6;
@@ -443,10 +439,8 @@
             ring.style.strokeDashoffset = offset;
             ring.style.stroke = prob > 0.7 ? 'var(--accent-emerald)' : (prob > 0.4 ? 'var(--risk-medium)' : 'var(--risk-high)');
         }
-
         if ($('#reserveProbValue')) $('#reserveProbValue').textContent = `${pct}%`;
 
-        // Classification interpretation badge
         const badge = $('#geolClassBadge');
         if (badge) {
             if (prob >= 0.75) {
@@ -467,39 +461,53 @@
             }
         }
 
-        if ($('#resQueryLatLon')) $('#resQueryLatLon').textContent = `${data.query_lat.toFixed(4)}°N, ${data.query_lon.toFixed(4)}°E`;
-        if ($('#resGridLatLon')) $('#resGridLatLon').textContent = `${data.nearest_grid_lat.toFixed(2)}°N, ${data.nearest_grid_lon.toFixed(2)}°E`;
-        if ($('#resDistance')) $('#resDistance').textContent = `${data.grid_distance_degrees.toFixed(4)}° (~${(data.grid_distance_degrees * 111).toFixed(1)} km)`;
+        if ($('#resQueryLatLon')) {
+            $('#resQueryLatLon').textContent = `${data.query_lat.toFixed(4)}°N, ${data.query_lon.toFixed(4)}°E`;
+        }
+
+        const isLive = data.source === 'live_satellite';
+
+        if ($('#resGridLatLon')) {
+            $('#resGridLatLon').textContent = isLive
+                ? 'Direct live extraction — no grid lookup needed'
+                : `${data.nearest_grid_lat.toFixed(2)}°N, ${data.nearest_grid_lon.toFixed(2)}°E`;
+        }
+
+        if ($('#resDistance')) {
+            $('#resDistance').textContent = isLive
+                ? '0 km (exact coordinate)'
+                : `${data.grid_distance_degrees.toFixed(4)}° (~${(data.grid_distance_degrees * 111).toFixed(1)} km)`;
+        }
+
+        const sourceEl = $('#resDataSource');
+        if (sourceEl) {
+            sourceEl.textContent = isLive ? '🛰️ LIVE SATELLITE EXTRACTION' : '📊 CACHED GRID (nearest analyzed point)';
+            sourceEl.style.color = isLive ? 'var(--accent-emerald)' : 'var(--text-muted)';
+        }
     }
 
     function highlightTargetOnMap(lat, lon, data) {
         if (!state.reserveMap) return;
         const map = state.reserveMap;
-
         if (state.selectedCircle) map.removeLayer(state.selectedCircle);
         if (state.selectedMarker) map.removeLayer(state.selectedMarker);
-
         const prob = data ? data.probability : 0.5;
         const color = prob > 0.7 ? '#10b981' : (prob > 0.4 ? '#f59e0b' : '#ef4444');
 
-        // 16 km radar exploration circle
         state.selectedCircle = L.circle([lat, lon], {
-            radius: 16000,
-            color: color,
-            fillColor: color,
-            fillOpacity: 0.16,
-            weight: 2,
-            dashArray: '4, 4'
+            radius: 16000, color: color, fillColor: color, fillOpacity: 0.16, weight: 2, dashArray: '4, 4'
         }).addTo(map);
 
-        // Center crosshair marker
         state.selectedMarker = L.circleMarker([lat, lon], {
-            radius: 6,
-            color: '#ffffff',
-            fillColor: color,
-            fillOpacity: 1,
-            weight: 2
+            radius: 6, color: '#ffffff', fillColor: color, fillOpacity: 1, weight: 2
         }).addTo(map);
+
+        const isLive = data && data.source === 'live_satellite';
+        const offsetLine = isLive
+            ? 'Live satellite extraction (exact point)'
+            : (data && typeof data.grid_distance_degrees === 'number'
+                ? `Offset: ${(data.grid_distance_degrees * 111).toFixed(1)} km from grid cell`
+                : '');
 
         const popupHtml = `
             <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 4px;">
@@ -507,7 +515,7 @@
                 <div>Lat: ${lat.toFixed(4)}°N</div>
                 <div>Lon: ${lon.toFixed(4)}°E</div>
                 <div style="margin-top: 4px; font-weight: 700; color: #fff;">Deposit Probability: ${(prob * 100).toFixed(1)}%</div>
-                <div style="color: #94a3b8; font-size: 10px;">Offset: ${(data.grid_distance_degrees * 111).toFixed(1)} km from grid cell</div>
+                <div style="color: #94a3b8; font-size: 10px;">${offsetLine}</div>
             </div>
         `;
         state.selectedMarker.bindPopup(popupHtml).openPopup();
