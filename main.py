@@ -3,6 +3,8 @@ FastAPI backend for SIH26009 — Manganese Reserve & Production Shortfall Predic
 """
 
 import os
+import json
+import glob
 import joblib
 import numpy as np
 import pandas as pd
@@ -22,26 +24,45 @@ except ImportError:
     print("WARNING: shap not installed — root cause analysis will be disabled.")
 
 # Defensive Earth Engine import + init — live satellite lookups are a bonus feature.
-# If EE can't initialize (missing key, quota, network issue), /predict_reserve must
-# still work by falling back to the cached grid, never crash the whole API.
+# Credentials are accepted two ways, checked in order:
+#   1. GEE_KEY_JSON  env var  -> paste the ENTIRE service-account JSON as the value
+#   2. a key file             -> GEE_KEY_PATH, else Render's /etc/secrets/gee_key.json
+# The env var route avoids every filesystem/mount failure mode. The service
+# account email is read FROM the key, so it can never mismatch a hardcoded string.
 EE_AVAILABLE = False
+EE_ERROR = None
+SERVICE_ACCOUNT_EMAIL = None
+EE_KEY_PATH = os.environ.get("GEE_KEY_PATH", "/etc/secrets/gee_key.json")
+
 try:
     import ee
 
-    SERVICE_ACCOUNT_EMAIL = "manganese-dashboard@ps01-507505.iam.gserviceaccount.com"
-    # Render "Secret Files" are mounted at /etc/secrets/<filename> at deploy time.
-    EE_KEY_PATH = "/etc/secrets/gee_key.json"
+    _key_json = os.environ.get("GEE_KEY_JSON")
+    _source = "GEE_KEY_JSON env var"
 
-    if os.path.exists(EE_KEY_PATH):
-        _ee_credentials = ee.ServiceAccountCredentials(SERVICE_ACCOUNT_EMAIL, EE_KEY_PATH)
+    if not _key_json and os.path.exists(EE_KEY_PATH):
+        with open(EE_KEY_PATH) as _fh:
+            _key_json = _fh.read()
+        _source = EE_KEY_PATH
+
+    if not _key_json:
+        EE_ERROR = (
+            f"No credentials found. GEE_KEY_JSON is unset and {EE_KEY_PATH} does not exist. "
+            f"/etc/secrets currently contains: {glob.glob('/etc/secrets/*')}"
+        )
+        print("WARNING:", EE_ERROR)
+    else:
+        _info = json.loads(_key_json)
+        SERVICE_ACCOUNT_EMAIL = _info["client_email"]
+        _ee_credentials = ee.ServiceAccountCredentials(SERVICE_ACCOUNT_EMAIL, key_data=_key_json)
         ee.Initialize(_ee_credentials)
         EE_AVAILABLE = True
-        print("Earth Engine initialized — live satellite lookups enabled.")
-    else:
-        print(f"WARNING: {EE_KEY_PATH} not found — live satellite lookups disabled, using cached grid only.")
+        print(f"Earth Engine initialized as {SERVICE_ACCOUNT_EMAIL} (via {_source}) — live satellite lookups enabled.")
+
 except Exception as e:
     EE_AVAILABLE = False
-    print(f"WARNING: Earth Engine init failed — live satellite lookups disabled: {e}")
+    EE_ERROR = f"{type(e).__name__}: {e}"
+    print(f"WARNING: Earth Engine init failed: {EE_ERROR}")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -271,6 +292,23 @@ def health_check():
         "shap_available": SHAP_AVAILABLE and shap_explainer is not None,
         "live_satellite_available": EE_AVAILABLE and manganese_model is not None,
     }
+
+@app.get("/debug_ee")
+def debug_ee():
+    """Temporary diagnostic — REMOVE BEFORE THE DEMO. Reports exactly why
+    Earth Engine did or did not initialize, without digging through logs."""
+    return {
+        "ee_available": EE_AVAILABLE,
+        "ee_error": EE_ERROR,
+        "service_account": SERVICE_ACCOUNT_EMAIL,
+        "gee_key_json_env_set": bool(os.environ.get("GEE_KEY_JSON")),
+        "key_path_checked": EE_KEY_PATH,
+        "key_path_exists": os.path.exists(EE_KEY_PATH),
+        "secrets_dir_contents": glob.glob("/etc/secrets/*"),
+        "manganese_model_loaded": manganese_model is not None,
+        "feature_cols_loaded": reserve_feature_cols is not None,
+    }
+
 
 @app.post("/predict_reserve")
 def predict_reserve(req: ReserveRequest):
