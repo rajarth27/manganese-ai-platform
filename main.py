@@ -64,6 +64,46 @@ except FileNotFoundError:
     reserve_cache = None
     print("WARNING: reserve_cache.csv not found — /predict_reserve will fail.")
 
+# ---------------------------------------------------------------------------
+# Relative prospectivity ranking
+#
+# The exploration classifier's absolute probabilities are not well calibrated:
+# its negatives were sampled across a far wider terrain envelope than central
+# India, so it partly separates "plateau terrain" rather than "manganese".
+# Its ORDERING still carries the spectral signal, so we surface a percentile
+# rank against the analyzed belt instead of an absolute probability. This is
+# also how prospectivity maps are normally presented in exploration practice:
+# ranked drill targets, not calibrated likelihoods.
+# ---------------------------------------------------------------------------
+
+_RANK_REF = (
+    np.sort(reserve_cache["probability"].values)
+    if reserve_cache is not None and len(reserve_cache) > 0
+    else None
+)
+
+
+def prospectivity_rank(p):
+    """Percentile (0-100) of p within the analyzed Central Indian belt."""
+    if _RANK_REF is None or p is None:
+        return None
+    return round(100.0 * float(np.searchsorted(_RANK_REF, p, side="right")) / len(_RANK_REF), 1)
+
+
+def rank_tier(r):
+    if r is None:
+        return "RANK UNAVAILABLE"
+    if r >= 90:
+        return "PRIORITY 1 // TOP DECILE DRILL TARGET"
+    if r >= 75:
+        return "PRIORITY 2 // HIGH RANK"
+    if r >= 50:
+        return "PRIORITY 3 // MODERATE RANK"
+    if r >= 25:
+        return "LOW RANK // DEPRIORITIZE"
+    return "VERY LOW RANK // NOT RECOMMENDED"
+
+
 try:
     production_model = joblib.load(os.path.join(BASE_DIR, "production_model.pkl"))
     prod_feature_cols = joblib.load(os.path.join(BASE_DIR, "prod_feature_columns.pkl"))
@@ -168,7 +208,10 @@ def score_reserve_live(lat, lon):
     EE quota, etc.) so the caller can fall back to the cached grid.
     """
     feats = get_live_satellite_features(lat, lon)
-    input_row = pd.DataFrame([feats])[reserve_feature_cols]
+    # reindex (not [cols]) so bands EE omitted entirely become NaN instead of
+    # raising KeyError. A tile with no cloud-free 2024 pass returns no NDVI /
+    # Iron_Oxide / Clay keys at all; subscripting would throw before fillna ran.
+    input_row = pd.DataFrame([feats]).reindex(columns=reserve_feature_cols)
     # Fill any missing bands (e.g. no cloud-free Sentinel-2 pass for this tile)
     # with the training set's mean for that feature, same as during training.
     input_row = input_row.fillna(X_train_means)
@@ -238,10 +281,13 @@ def predict_reserve(req: ReserveRequest):
     if EE_AVAILABLE and manganese_model is not None:
         try:
             probability = score_reserve_live(req.lat, req.lon)
+            rank = prospectivity_rank(probability)
             return {
                 "query_lat": req.lat,
                 "query_lon": req.lon,
                 "probability": round(probability, 4),
+                "rank": rank,
+                "tier": rank_tier(rank),
                 "source": "live_satellite",
                 "note": "Computed from a real-time Sentinel-2 / MODIS / SRTM extraction at these exact coordinates.",
             }
@@ -256,12 +302,17 @@ def predict_reserve(req: ReserveRequest):
     nearest = reserve_cache.loc[nearest_idx]
     distance_deg = float(np.sqrt(diffs.loc[nearest_idx]))
 
+    probability = float(nearest["probability"])
+    rank = prospectivity_rank(probability)
+
     return {
         "query_lat": req.lat,
         "query_lon": req.lon,
         "nearest_grid_lat": float(nearest["lat"]),
         "nearest_grid_lon": float(nearest["lon"]),
-        "probability": float(nearest["probability"]),
+        "probability": probability,
+        "rank": rank,
+        "tier": rank_tier(rank),
         "grid_distance_degrees": round(distance_deg, 4),
         "source": "cached_fallback",
         "note": "Live satellite extraction was unavailable for this coordinate — showing the nearest already-analyzed grid point instead.",
@@ -272,7 +323,9 @@ def reserve_grid():
     """Returns the full precomputed reserve probability grid for map rendering."""
     if reserve_cache is None:
         raise HTTPException(status_code=503, detail="Reserve cache not loaded on server.")
-    return reserve_cache.to_dict(orient="records")
+    grid = reserve_cache.copy()
+    grid["rank"] = [prospectivity_rank(p) for p in grid["probability"]]
+    return grid.to_dict(orient="records")
 
 @app.post("/predict_shortfall")
 def predict_shortfall(req: ShortfallRequest):

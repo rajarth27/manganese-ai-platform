@@ -191,7 +191,7 @@
             opacity: 0.9,
         });
 
-        const darkTile = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        const darkTile = L.tileLayer('https://{s}.basemaps.cartocdn.dark_all/{z}/{x}/{y}{r}.png', {
             attribution: 'CARTO, OpenStreetMap',
             maxZoom: 18,
             subdomains: 'abcd',
@@ -363,7 +363,10 @@
 
     function renderLeafletHeatmap(map, data) {
         if (!window.L || !window.L.heatLayer || !data || data.length === 0) return;
-        const heatPoints = data.map(d => [d.lat, d.lon, Math.max(0.1, d.probability)]);
+        // Heatmap intensity uses rank so the layer spreads across the full
+        // colour range instead of saturating (raw probabilities cluster 0.6-1.0).
+        const heatPoints = data.map(d => [d.lat, d.lon,
+            Math.max(0.05, (typeof d.rank === 'number') ? d.rank / 100 : d.probability)]);
         const heat = L.heatLayer(heatPoints, {
             radius: 28,
             blur: 22,
@@ -429,36 +432,32 @@
     }
 
     function renderGeologicalTelemetry(data) {
-        const prob = data.probability;
-        const pct = (prob * 100).toFixed(1);
+        // Display the percentile RANK, not the raw probability. The classifier
+        // is not calibrated in absolute terms; its ordering is what we trust.
+        const rank = (typeof data.rank === 'number') ? data.rank : data.probability * 100;
+        const frac = rank / 100;
+        const pct = rank.toFixed(1);
 
         const ring = $('#gaugeProgressRing');
         if (ring) {
             const circumference = 301.6;
-            const offset = circumference * (1 - prob);
+            const offset = circumference * (1 - frac);
             ring.style.strokeDashoffset = offset;
-            ring.style.stroke = prob > 0.7 ? 'var(--accent-emerald)' : (prob > 0.4 ? 'var(--risk-medium)' : 'var(--risk-high)');
+            ring.style.stroke = frac > 0.75 ? 'var(--accent-emerald)' : (frac > 0.5 ? 'var(--risk-medium)' : 'var(--risk-high)');
         }
         if ($('#reserveProbValue')) $('#reserveProbValue').textContent = `${pct}%`;
 
         const badge = $('#geolClassBadge');
         if (badge) {
-            if (prob >= 0.75) {
-                badge.textContent = 'HIGH PROSPECT TARGET // HYDROTHERMAL VEIN SIGNATURE';
-                badge.style.color = 'var(--accent-emerald)';
-                badge.style.background = 'rgba(16, 185, 129, 0.1)';
-                badge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
-            } else if (prob >= 0.45) {
-                badge.textContent = 'MODERATE PROSPECT // ALTERATION HALO DETECTED';
-                badge.style.color = 'var(--risk-medium)';
-                badge.style.background = 'rgba(245, 158, 11, 0.1)';
-                badge.style.borderColor = 'rgba(245, 158, 11, 0.3)';
-            } else {
-                badge.textContent = 'LOW PROSPECT // UNMINERALIZED HOST BEDROCK';
-                badge.style.color = 'var(--text-muted)';
-                badge.style.background = 'rgba(255, 255, 255, 0.03)';
-                badge.style.borderColor = 'var(--border-subtle)';
-            }
+            badge.textContent = data.tier || 'RANK UNAVAILABLE';
+            const style = frac >= 0.75
+                ? ['var(--accent-emerald)', 'rgba(16, 185, 129, 0.1)', 'rgba(16, 185, 129, 0.3)']
+                : frac >= 0.50
+                    ? ['var(--risk-medium)', 'rgba(245, 158, 11, 0.1)', 'rgba(245, 158, 11, 0.3)']
+                    : ['var(--text-muted)', 'rgba(255, 255, 255, 0.03)', 'var(--border-subtle)'];
+            badge.style.color = style[0];
+            badge.style.background = style[1];
+            badge.style.borderColor = style[2];
         }
 
         if ($('#resQueryLatLon')) {
@@ -491,8 +490,8 @@
         const map = state.reserveMap;
         if (state.selectedCircle) map.removeLayer(state.selectedCircle);
         if (state.selectedMarker) map.removeLayer(state.selectedMarker);
-        const prob = data ? data.probability : 0.5;
-        const color = prob > 0.7 ? '#10b981' : (prob > 0.4 ? '#f59e0b' : '#ef4444');
+        const r = (data && typeof data.rank === 'number') ? data.rank : 50;
+        const color = r > 75 ? '#10b981' : (r > 50 ? '#f59e0b' : '#ef4444');
 
         state.selectedCircle = L.circle([lat, lon], {
             radius: 16000, color: color, fillColor: color, fillOpacity: 0.16, weight: 2, dashArray: '4, 4'
@@ -508,6 +507,8 @@
             : (data && typeof data.grid_distance_degrees === 'number'
                 ? `Offset: ${(data.grid_distance_degrees * 111).toFixed(1)} km from grid cell`
                 : '');
+
+        const prob = (data && typeof data.probability === 'number') ? data.probability : 0.5;
 
         const popupHtml = `
             <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 4px;">

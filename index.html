@@ -234,10 +234,14 @@
 
                     <!-- Rapid Sector Preset Chips -->
                     <div class="preset-chips-cluster">
-                        <span class="preset-lead-text">Preset Sectors:</span>
-                        <button type="button" class="geo-preset-chip" data-lat="21.81" data-lon="80.23">Balaghat Pit [21.81, 80.23]</button>
-                        <button type="button" class="geo-preset-chip" data-lat="21.39" data-lon="79.28">Mansar Ore Zone [21.39, 79.28]</button>
-                        <button type="button" class="geo-preset-chip" data-lat="21.62" data-lon="85.58">Keonjhar Belt [21.62, 85.58]</button>
+                        <span class="preset-lead-text">MOIL Mines:</span>
+                        <button type="button" class="geo-preset-chip" data-lat="21.81" data-lon="80.23">Balaghat (Bharveli) — largest, underground</button>
+                        <button type="button" class="geo-preset-chip" data-lat="21.39" data-lon="79.28">Munsar — underground</button>
+                        <!-- TODO: verify these coordinates in Google Maps before demo, then
+                             add the remaining MOIL mines: Ukwa, Kandri, Gumgaon, Beldongri,
+                             Chikla, Tirodi, Sitapatore. MOIL operates 11 mines across Nagpur
+                             and Bhandara districts (Maharashtra) and Balaghat district (MP). -->
+                        <button type="button" class="geo-preset-chip" data-lat="21.10" data-lon="79.75">Dongri Buzurg — opencast, dioxide ore</button>
                     </div>
                 </div>
 
@@ -311,7 +315,7 @@
                                 </svg>
                                 <div class="gauge-value-box">
                                     <div class="gauge-num" id="reserveProbValue">—</div>
-                                    <div class="gauge-label">DEPOSIT PROBABILITY</div>
+                                    <div class="gauge-label">RELATIVE PROSPECTIVITY RANK</div>
                                 </div>
                             </div>
 
@@ -344,7 +348,7 @@
 
                             <div class="geological-clarity-notice">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                                <span>Confidence indicator represents deposit presence likelihood from satellite spectral signatures, not chemical ore grade percentage.</span>
+                                <span>Percentile rank of relative prospectivity within the analyzed Central Indian belt (18-24&deg;N, 76-84&deg;E), derived from Sentinel-2 SWIR/VNIR alteration indices, MODIS land surface temperature and SRTM terrain. Surface spectral signatures indicate host-horizon continuation for drill prioritisation &mdash; not ore grade, tonnage, or sub-surface detection. Eight of MOIL's eleven mines are underground and Balaghat reaches roughly 383 m depth; no optical satellite images at that depth.</span>
                             </div>
                         </div>
                     </div>
@@ -673,7 +677,7 @@
                     <div class="results-header-banner">
                         <div class="banner-title">
                             <span class="banner-icon">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                             </span>
                             <h3>Simulated Scenario Outcome</h3>
                         </div>
