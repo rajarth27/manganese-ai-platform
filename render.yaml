@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: manganese-ai-platform
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GEE_KEY_JSON
+        sync: false  # Set manually in Render dashboard
+    plan: free
