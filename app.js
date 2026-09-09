@@ -217,12 +217,6 @@
             opacity: 0.9,
         });
 
-        const darkTile = L.tileLayer('https://{s}.basemaps.cartocdn.dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: 'CARTO, OpenStreetMap',
-            maxZoom: 18,
-            subdomains: 'abcd',
-        });
-
         const streetTile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: 'OpenStreetMap',
             maxZoom: 18,
@@ -235,7 +229,6 @@
         state.baseLayers = {
             satellite: satGroup,
             thermal: nasaThermalGroup,
-            dark: darkTile,
             street: streetTile,
         };
         state.currentBaseLayer = satGroup;
@@ -325,7 +318,6 @@
         const btns = {
             satellite: $('#btnLayerSatellite'),
             thermal: $('#btnLayerThermal'),
-            dark: $('#btnLayerDark'),
             street: $('#btnLayerStreet'),
         };
 
