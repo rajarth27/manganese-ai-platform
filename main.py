@@ -3,11 +3,15 @@ FastAPI backend for SIH26009 — Manganese Reserve & Production Shortfall Predic
 """
 
 import os
+import json
+import glob
 import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 # Defensive SHAP import — if this fails to install or import, the rest of the
@@ -20,26 +24,45 @@ except ImportError:
     print("WARNING: shap not installed — root cause analysis will be disabled.")
 
 # Defensive Earth Engine import + init — live satellite lookups are a bonus feature.
-# If EE can't initialize (missing key, quota, network issue), /predict_reserve must
-# still work by falling back to the cached grid, never crash the whole API.
+# Credentials are accepted two ways, checked in order:
+#   1. GEE_KEY_JSON  env var  -> paste the ENTIRE service-account JSON as the value
+#   2. a key file             -> GEE_KEY_PATH, else Render's /etc/secrets/gee_key.json
+# The env var route avoids every filesystem/mount failure mode. The service
+# account email is read FROM the key, so it can never mismatch a hardcoded string.
 EE_AVAILABLE = False
+EE_ERROR = None
+SERVICE_ACCOUNT_EMAIL = None
+EE_KEY_PATH = os.environ.get("GEE_KEY_PATH", "/etc/secrets/gee_key.json")
+
 try:
     import ee
 
-    SERVICE_ACCOUNT_EMAIL = "manganese-dashboard@ps01-507505.iam.gserviceaccount.com"
-    # Render "Secret Files" are mounted at /etc/secrets/<filename> at deploy time.
-    EE_KEY_PATH = "/etc/secrets/gee_key.json"
+    _key_json = os.environ.get("GEE_KEY_JSON")
+    _source = "GEE_KEY_JSON env var"
 
-    if os.path.exists(EE_KEY_PATH):
-        _ee_credentials = ee.ServiceAccountCredentials(SERVICE_ACCOUNT_EMAIL, EE_KEY_PATH)
+    if not _key_json and os.path.exists(EE_KEY_PATH):
+        with open(EE_KEY_PATH) as _fh:
+            _key_json = _fh.read()
+        _source = EE_KEY_PATH
+
+    if not _key_json:
+        EE_ERROR = (
+            f"No credentials found. GEE_KEY_JSON is unset and {EE_KEY_PATH} does not exist. "
+            f"/etc/secrets currently contains: {glob.glob('/etc/secrets/*')}"
+        )
+        print("WARNING:", EE_ERROR)
+    else:
+        _info = json.loads(_key_json)
+        SERVICE_ACCOUNT_EMAIL = _info["client_email"]
+        _ee_credentials = ee.ServiceAccountCredentials(SERVICE_ACCOUNT_EMAIL, key_data=_key_json)
         ee.Initialize(_ee_credentials)
         EE_AVAILABLE = True
-        print("Earth Engine initialized — live satellite lookups enabled.")
-    else:
-        print(f"WARNING: {EE_KEY_PATH} not found — live satellite lookups disabled, using cached grid only.")
+        print(f"Earth Engine initialized as {SERVICE_ACCOUNT_EMAIL} (via {_source}) — live satellite lookups enabled.")
+
 except Exception as e:
     EE_AVAILABLE = False
-    print(f"WARNING: Earth Engine init failed — live satellite lookups disabled: {e}")
+    EE_ERROR = f"{type(e).__name__}: {e}"
+    print(f"WARNING: Earth Engine init failed: {EE_ERROR}")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -58,28 +81,68 @@ app.add_middleware(
 
 try:
     reserve_cache = pd.read_csv(os.path.join(BASE_DIR, "reserve_cache.csv"))
-except Exception as e:
+except FileNotFoundError:
     reserve_cache = None
-    print(f"WARNING: reserve_cache.csv load failed: {e}")
+    print("WARNING: reserve_cache.csv not found — /predict_reserve will fail.")
+
+# ---------------------------------------------------------------------------
+# Relative prospectivity ranking
+#
+# The exploration classifier's absolute probabilities are not well calibrated:
+# its negatives were sampled across a far wider terrain envelope than central
+# India, so it partly separates "plateau terrain" rather than "manganese".
+# Its ORDERING still carries the spectral signal, so we surface a percentile
+# rank against the analyzed belt instead of an absolute probability. This is
+# also how prospectivity maps are normally presented in exploration practice:
+# ranked drill targets, not calibrated likelihoods.
+# ---------------------------------------------------------------------------
+
+_RANK_REF = (
+    np.sort(reserve_cache["probability"].values)
+    if reserve_cache is not None and len(reserve_cache) > 0
+    else None
+)
+
+
+def prospectivity_rank(p):
+    """Percentile (0-100) of p within the analyzed Central Indian belt."""
+    if _RANK_REF is None or p is None:
+        return None
+    return round(100.0 * float(np.searchsorted(_RANK_REF, p, side="right")) / len(_RANK_REF), 1)
+
+
+def rank_tier(r):
+    if r is None:
+        return "RANK UNAVAILABLE"
+    if r >= 90:
+        return "PRIORITY 1 // TOP DECILE DRILL TARGET"
+    if r >= 75:
+        return "PRIORITY 2 // HIGH RANK"
+    if r >= 50:
+        return "PRIORITY 3 // MODERATE RANK"
+    if r >= 25:
+        return "LOW RANK // DEPRIORITIZE"
+    return "VERY LOW RANK // NOT RECOMMENDED"
+
 
 try:
     production_model = joblib.load(os.path.join(BASE_DIR, "production_model.pkl"))
     prod_feature_cols = joblib.load(os.path.join(BASE_DIR, "prod_feature_columns.pkl"))
-except Exception as e:
+except FileNotFoundError:
     production_model = None
     prod_feature_cols = None
-    print(f"WARNING: production_model.pkl load failed: {e}")
+    print("WARNING: production_model.pkl or prod_feature_columns.pkl not found — /predict_shortfall will fail.")
 
 try:
     manganese_model = joblib.load(os.path.join(BASE_DIR, "manganese_model.pkl"))
     reserve_feature_cols = joblib.load(os.path.join(BASE_DIR, "feature_columns.pkl"))
     X_train_reserve = joblib.load(os.path.join(BASE_DIR, "X_train.pkl"))
     X_train_means = X_train_reserve.mean()
-except Exception as e:
+except FileNotFoundError:
     manganese_model = None
     reserve_feature_cols = None
     X_train_means = None
-    print(f"WARNING: manganese_model load failed: {e}")
+    print("WARNING: manganese_model.pkl / feature_columns.pkl / X_train.pkl not found — live reserve scoring disabled.")
 
 # Build the SHAP explainer once at startup (expensive to rebuild per-request)
 shap_explainer = None
@@ -110,23 +173,20 @@ class ShortfallRequest(BaseModel):
     truck_count: int = Field(..., ge=0)
     haulage_delay: float = Field(..., ge=0)
     target_production: float = Field(..., gt=0)
-    
-class SimulateRequest(BaseModel):
-    mode: str = Field(..., description="Currently supported: 'compare'")
-    baseline: ShortfallRequest
-    scenario: ShortfallRequest | None = None
 
 # ---------------------------------------------------------------------------
 # AI/ML Helper Logic
 # ---------------------------------------------------------------------------
 
 def classify_risk(shortfall_percentage):
-    if shortfall_percentage <= 10.0:
+    """Assigns risk tier based on shortfall percentage."""
+    if shortfall_percentage <= 5.0:
         return "LOW"
-    elif shortfall_percentage <= 20.0:
+    elif shortfall_percentage <= 15.0:
         return "MEDIUM"
     else:
         return "HIGH"
+
 def get_live_satellite_features(lat, lon):
     """
     Live Earth Engine extraction for a single coordinate. Mirrors the exact
@@ -169,7 +229,10 @@ def score_reserve_live(lat, lon):
     EE quota, etc.) so the caller can fall back to the cached grid.
     """
     feats = get_live_satellite_features(lat, lon)
-    input_row = pd.DataFrame([feats])[reserve_feature_cols]
+    # reindex (not [cols]) so bands EE omitted entirely become NaN instead of
+    # raising KeyError. A tile with no cloud-free 2024 pass returns no NDVI /
+    # Iron_Oxide / Clay keys at all; subscripting would throw before fillna ran.
+    input_row = pd.DataFrame([feats]).reindex(columns=reserve_feature_cols)
     # Fill any missing bands (e.g. no cloud-free Sentinel-2 pass for this tile)
     # with the training set's mean for that feature, same as during training.
     input_row = input_row.fillna(X_train_means)
@@ -212,18 +275,9 @@ def build_recommendations(req: ShortfallRequest, shortfall_pct: float):
         recommendations.append("Drilling/blasting delays are significant — review supply chain.")
     if req.truck_count < 10:
         recommendations.append("Truck count is low — consider reallocating haulage vehicles.")
-    if req.haulage_delay > 1.0:
-        recommendations.append("Haulage delay is elevated — inspect haul road conditions and dispatch routing.")
     if shortfall_pct > 15:
         recommendations.append("Projected shortfall exceeds 15% — escalate to site supervisor.")
-
-    # Track the real number of triggered flags BEFORE applying the fallback message
-    actual_flag_count = len(recommendations)
-
-    if not recommendations:
-        recommendations = ["No significant risk factors detected — production on track."]
-
-    return recommendations, actual_flag_count
+    return recommendations or ["No significant risk factors detected — production on track."]
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -239,6 +293,23 @@ def health_check():
         "live_satellite_available": EE_AVAILABLE and manganese_model is not None,
     }
 
+@app.get("/debug_ee")
+def debug_ee():
+    """Temporary diagnostic — REMOVE BEFORE THE DEMO. Reports exactly why
+    Earth Engine did or did not initialize, without digging through logs."""
+    return {
+        "ee_available": EE_AVAILABLE,
+        "ee_error": EE_ERROR,
+        "service_account": SERVICE_ACCOUNT_EMAIL,
+        "gee_key_json_env_set": bool(os.environ.get("GEE_KEY_JSON")),
+        "key_path_checked": EE_KEY_PATH,
+        "key_path_exists": os.path.exists(EE_KEY_PATH),
+        "secrets_dir_contents": glob.glob("/etc/secrets/*"),
+        "manganese_model_loaded": manganese_model is not None,
+        "feature_cols_loaded": reserve_feature_cols is not None,
+    }
+
+
 @app.post("/predict_reserve")
 def predict_reserve(req: ReserveRequest):
     if reserve_cache is None:
@@ -248,10 +319,13 @@ def predict_reserve(req: ReserveRequest):
     if EE_AVAILABLE and manganese_model is not None:
         try:
             probability = score_reserve_live(req.lat, req.lon)
+            rank = prospectivity_rank(probability)
             return {
                 "query_lat": req.lat,
                 "query_lon": req.lon,
                 "probability": round(probability, 4),
+                "rank": rank,
+                "tier": rank_tier(rank),
                 "source": "live_satellite",
                 "note": "Computed from a real-time Sentinel-2 / MODIS / SRTM extraction at these exact coordinates.",
             }
@@ -266,12 +340,17 @@ def predict_reserve(req: ReserveRequest):
     nearest = reserve_cache.loc[nearest_idx]
     distance_deg = float(np.sqrt(diffs.loc[nearest_idx]))
 
+    probability = float(nearest["probability"])
+    rank = prospectivity_rank(probability)
+
     return {
         "query_lat": req.lat,
         "query_lon": req.lon,
         "nearest_grid_lat": float(nearest["lat"]),
         "nearest_grid_lon": float(nearest["lon"]),
-        "probability": float(nearest["probability"]),
+        "probability": probability,
+        "rank": rank,
+        "tier": rank_tier(rank),
         "grid_distance_degrees": round(distance_deg, 4),
         "source": "cached_fallback",
         "note": "Live satellite extraction was unavailable for this coordinate — showing the nearest already-analyzed grid point instead.",
@@ -282,7 +361,9 @@ def reserve_grid():
     """Returns the full precomputed reserve probability grid for map rendering."""
     if reserve_cache is None:
         raise HTTPException(status_code=503, detail="Reserve cache not loaded on server.")
-    return reserve_cache.to_dict(orient="records")
+    grid = reserve_cache.copy()
+    grid["rank"] = [prospectivity_rank(p) for p in grid["probability"]]
+    return grid.to_dict(orient="records")
 
 @app.post("/predict_shortfall")
 def predict_shortfall(req: ShortfallRequest):
@@ -291,7 +372,7 @@ def predict_shortfall(req: ShortfallRequest):
 
     # target_production is intentionally excluded from the model's input row —
     # the model predicts an efficiency ratio based on operational conditions only.
-    row = pd.DataFrame([req.dict()])[prod_feature_cols]
+    row = pd.DataFrame([req.model_dump()])[prod_feature_cols]
     predicted_efficiency = float(production_model.predict(row)[0])
     predicted_efficiency = max(0.0, predicted_efficiency)
 
@@ -302,7 +383,7 @@ def predict_shortfall(req: ShortfallRequest):
 
     risk_tier = classify_risk(shortfall_pct)
     root_causes = get_root_causes(row)
-    recommendations, actual_flag_count = build_recommendations(req, shortfall_pct)
+    recommendations = build_recommendations(req, shortfall_pct)
 
     return {
         "predicted_efficiency": round(predicted_efficiency, 4),
@@ -311,62 +392,56 @@ def predict_shortfall(req: ShortfallRequest):
         "shortfall_pct": shortfall_pct,
         "risk_tier": risk_tier,
         "root_causes": root_causes,
-        "risk_flags": actual_flag_count,
+        "risk_flags": len(recommendations),
         "recommendations": recommendations,
     }
 
-def run_prediction(req: ShortfallRequest):
-    """Helper: runs the model once and returns a full result dict for one input set."""
-    row = pd.DataFrame([req.dict()])[prod_feature_cols]
-    predicted_efficiency = float(production_model.predict(row)[0])
-    predicted_efficiency = max(0.0, predicted_efficiency)
-
-    predicted_actual = predicted_efficiency * req.target_production
-    shortfall = max(0.0, req.target_production - predicted_actual)
-    shortfall_pct = round((shortfall / req.target_production) * 100, 2) if req.target_production > 0 else 0.0
-    risk_tier = classify_risk(shortfall_pct)
-
-    return {
-        "efficiency": round(predicted_efficiency, 4),
-        "production": round(predicted_actual, 2),
-        "target_production": req.target_production,
-        "shortfall": round(shortfall, 2),
-        "shortfall_pct": shortfall_pct,
-        "risk_tier": risk_tier,
-    }
-
 @app.post("/simulate")
-def simulate_scenario(req: SimulateRequest):
+def simulate_scenario(req: ShortfallRequest):
+    """What-if simulator — same model, framed as a scenario comparison."""
     if production_model is None or prod_feature_cols is None:
         raise HTTPException(status_code=503, detail="Production model not loaded.")
 
-    if req.mode != "compare":
-        raise HTTPException(status_code=400, detail=f"Unsupported mode: {req.mode}")
+    row = pd.DataFrame([req.model_dump()])[prod_feature_cols]
+    predicted_efficiency = float(production_model.predict(row)[0])
+    predicted_efficiency = max(0.0, predicted_efficiency)
 
-    if req.scenario is None:
-        raise HTTPException(status_code=400, detail="'scenario' is required for mode 'compare'.")
+    predicted = predicted_efficiency * req.target_production
 
-    baseline_result = run_prediction(req.baseline)
-    scenario_result = run_prediction(req.scenario)
+    shortfall = max(0.0, req.target_production - predicted)
+    shortfall_pct = round((shortfall / req.target_production) * 100, 2) if req.target_production > 0 else 0.0
 
-    efficiency_delta = round(scenario_result["efficiency"] - baseline_result["efficiency"], 4)
-    production_delta = round(scenario_result["production"] - baseline_result["production"], 2)
-    shortfall_delta = round(scenario_result["shortfall"] - baseline_result["shortfall"], 2)
-
-    if shortfall_delta < 0:
-        summary = f"This scenario recovers {abs(shortfall_delta)} tonnes and improves risk from {baseline_result['risk_tier']} to {scenario_result['risk_tier']}."
-    elif shortfall_delta > 0:
-        summary = f"This scenario loses {shortfall_delta} tonnes and worsens risk from {baseline_result['risk_tier']} to {scenario_result['risk_tier']}."
-    else:
-        summary = "This scenario has no meaningful impact on projected shortfall."
+    risk = classify_risk(shortfall_pct)
+    causes = get_root_causes(row)
 
     return {
-        "baseline": baseline_result,
-        "scenario": scenario_result,
-        "delta": {
-            "efficiency_change": efficiency_delta,
-            "production_change_tonnes": production_delta,
-            "shortfall_change_tonnes": shortfall_delta,
-        },
-        "summary": summary,
+        "scenario_target": req.target_production,
+        "simulated_efficiency": round(predicted_efficiency, 4),
+        "simulated_production": round(predicted, 2),
+        "simulated_shortfall": round(shortfall, 2),
+        "simulated_shortfall_pct": shortfall_pct,
+        "simulated_risk": risk,
+        "simulated_root_causes": causes,
+        "message": "Scenario simulated successfully. Compare these results with the current baseline.",
     }
+
+# ---------------------------------------------------------------------------
+# Serve frontend static files
+# ---------------------------------------------------------------------------
+
+@app.get("/app")
+def serve_frontend():
+    """Serve the single-page frontend."""
+    return FileResponse(os.path.join(BASE_DIR, "index.html"), media_type="text/html")
+
+# Mount static files (CSS, JS) — must be AFTER all API routes
+app.mount("/", StaticFiles(directory=BASE_DIR), name="static")
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
