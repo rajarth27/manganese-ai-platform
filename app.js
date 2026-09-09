@@ -902,12 +902,14 @@
         // Baseline vs scenario comparison table
         const cmp = $('#simComparison');
         if (cmp) {
-            // `higherIsBetter` decides the colour, not the sign. More production
-            // is good; more shortfall is bad. Zero stays neutral.
-            const signed = (v, unit, higherIsBetter, decimals = 1) => {
+            // Colour follows the SIGN, not the meaning: positive green,
+            // negative red, zero neutral. Note this means a growing shortfall
+            // (+ T) reads green even though it is a worse outcome — the third
+            // argument is kept only so the call sites stay self-documenting.
+            const signed = (v, unit, _higherIsBetter, decimals = 1) => {
                 let cls = 'delta-flat';
-                if (v > 0) cls = higherIsBetter ? 'delta-good' : 'delta-bad';
-                else if (v < 0) cls = higherIsBetter ? 'delta-bad' : 'delta-good';
+                if (v > 0) cls = 'delta-good';
+                else if (v < 0) cls = 'delta-bad';
                 return `<span class="${cls}">${v > 0 ? '+' : ''}${v.toFixed(decimals)}${unit}</span>`;
             };
             cmp.innerHTML = `
