@@ -362,6 +362,7 @@
                     <button type="button" class="sf-preset-chip" data-preset="normal">Normal shift &middot; MEDIUM</button>
                     <button type="button" class="sf-preset-chip" data-preset="strained">Fleet strain &middot; HIGH</button>
                     <button type="button" class="sf-preset-chip" data-preset="monsoon">Monsoon breakdown &middot; CRITICAL</button>
+                    <span class="preset-provenance">Target 5,225 T/day is MOIL&rsquo;s published FY2025&ndash;26 output (19.07 lakh MT) &divide; 365. Operational values are illustrative &mdash; MOIL does not publish shift-level fleet or delay data.</span>
                 </div>
 
                 <form class="enterprise-form" id="shortfallForm">
@@ -434,7 +435,7 @@
 
                             <div class="number-input-field">
                                 <label for="sf-temperature">Ambient Pit Temperature (°C)</label>
-                                <input type="number" id="sf-temperature" step="0.5" value="32.0">
+                                <input type="number" id="sf-temperature" step="0.5" min="-20" max="60" value="32.0">
                             </div>
                         </div>
 
@@ -471,7 +472,7 @@
 
                             <div class="number-input-field target-highlight">
                                 <label for="sf-target_production">Shift Target Production (Tonnes)</label>
-                                <input type="number" id="sf-target_production" step="10" min="100" value="1000">
+                                <input type="number" id="sf-target_production" step="10" min="100" value="5225">
                             </div>
                         </div>
                     </div>
@@ -551,7 +552,7 @@
                 <div class="sim-header-card">
                     <div>
                         <h3>Operational Scenario Modeling & Sensitivity Analysis</h3>
-                        <p>Simulate the impact of fleet reallocation, weather resilience measures, or blast rescheduling before committing capital. Baseline is taken from the Shortfall Prediction form &mdash; results below are read as what-if, optimisation and stress-test framings of the same comparison.</p>
+                        <p>Simulate the impact of fleet reallocation, weather resilience measures, or blast rescheduling before committing capital.</p>
                     </div>
                 </div>
 
@@ -578,16 +579,16 @@
                             <div class="param-two-col">
                                 <div class="number-input-field">
                                     <label for="sim-equipment_downtime">Downtime (h)</label>
-                                    <input type="number" id="sim-equipment_downtime" step="0.1" value="2.5">
+                                    <input type="number" id="sim-equipment_downtime" step="0.1" min="0" value="2.5">
                                 </div>
                                 <div class="number-input-field">
                                     <label for="sim-maintenance_hours">Maintenance (h)</label>
-                                    <input type="number" id="sim-maintenance_hours" step="0.1" value="4.0">
+                                    <input type="number" id="sim-maintenance_hours" step="0.1" min="0" value="4.0">
                                 </div>
                             </div>
                             <div class="number-input-field">
                                 <label for="sim-truck_count">Simulated Truck Count</label>
-                                <input type="number" id="sim-truck_count" step="1" value="15">
+                                <input type="number" id="sim-truck_count" step="1" min="1" value="15">
                             </div>
                         </div>
 
@@ -618,7 +619,7 @@
                             </div>
                             <div class="number-input-field">
                                 <label for="sim-temperature">Pit Temperature (°C)</label>
-                                <input type="number" id="sim-temperature" step="0.5" value="32.0">
+                                <input type="number" id="sim-temperature" step="0.5" min="-20" max="60" value="32.0">
                             </div>
                         </div>
 
@@ -643,18 +644,28 @@
                             <div class="param-two-col">
                                 <div class="number-input-field">
                                     <label for="sim-blast_delay">Blast Delay (h)</label>
-                                    <input type="number" id="sim-blast_delay" step="0.1" value="0.8">
+                                    <input type="number" id="sim-blast_delay" step="0.1" min="0" value="0.8">
                                 </div>
                                 <div class="number-input-field">
                                     <label for="sim-haulage_delay">Haulage Delay (h)</label>
-                                    <input type="number" id="sim-haulage_delay" step="0.1" value="1.0">
+                                    <input type="number" id="sim-haulage_delay" step="0.1" min="0" value="1.0">
                                 </div>
                             </div>
                             <div class="number-input-field target-highlight">
                                 <label for="sim-target_production">Scenario Target (Tonnes)</label>
-                                <input type="number" id="sim-target_production" step="10" value="1000">
+                                <input type="number" id="sim-target_production" step="10" min="100" value="5225">
                             </div>
                         </div>
+                    </div>
+
+                    <div class="sim-mode-row">
+                        <label for="sim-mode">Comparison mode</label>
+                        <select id="sim-mode">
+                            <option value="what_if">What-if</option>
+                            <option value="optimization">Optimisation</option>
+                            <option value="stress_test">Stress test</option>
+                        </select>
+                        <span class="sim-mode-hint">Baseline is taken from the Shortfall Prediction form. Mode frames the summary wording only &mdash; both sides use the same model.</span>
                     </div>
 
                     <div class="form-submit-row">
