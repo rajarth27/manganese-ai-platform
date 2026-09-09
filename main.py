@@ -368,7 +368,11 @@ def evaluate_scenario(req: ShortfallRequest):
     efficiency = max(0.0, float(production_model.predict(row)[0]))
     produced = efficiency * req.target_production
     shortfall = max(0.0, req.target_production - produced)
-    shortfall_pct = round((shortfall / req.target_production) * 100, 2) if req.target_production > 0 else 0.0
+
+    # With no target there is no shortfall to measure. Reporting 0% / LOW here
+    # would be false reassurance — the risk is undefined, not low.
+    has_target = req.target_production > 0
+    shortfall_pct = round((shortfall / req.target_production) * 100, 2) if has_target else 0.0
 
     flags = build_recommendations(req, shortfall_pct)
 
@@ -378,7 +382,7 @@ def evaluate_scenario(req: ShortfallRequest):
         "target_production": req.target_production,
         "shortfall_tonnes": round(shortfall, 2),
         "shortfall_pct": shortfall_pct,
-        "risk_tier": classify_risk(shortfall_pct),
+        "risk_tier": classify_risk(shortfall_pct) if has_target else "NO TARGET",
         "root_causes": get_root_causes(row),
         "risk_flags": len(flags),
         "recommendations": flags or [NO_RISK_MESSAGE],
@@ -477,6 +481,23 @@ def debug_ee():
     }
 
 
+# The exploration model was trained on central-Indian spectral signatures only.
+# Outside this envelope its output is extrapolation, and the API should say so
+# rather than return a confident-looking rank for Paris.
+TRAINED_BOUNDS = {"lat_min": 18.0, "lat_max": 24.0, "lon_min": 76.0, "lon_max": 84.0}
+
+
+def coverage_note(lat, lon):
+    b = TRAINED_BOUNDS
+    if b["lat_min"] <= lat <= b["lat_max"] and b["lon_min"] <= lon <= b["lon_max"]:
+        return None
+    return (
+        f"Coordinate is outside the model's trained region "
+        f"({b['lat_min']}-{b['lat_max']}\u00b0N, {b['lon_min']}-{b['lon_max']}\u00b0E). "
+        f"This rank is an extrapolation and should not be relied on."
+    )
+
+
 @app.post("/predict_reserve")
 def predict_reserve(req: ReserveRequest):
     if reserve_cache is None:
@@ -493,6 +514,7 @@ def predict_reserve(req: ReserveRequest):
                 "probability": round(probability, 4),
                 "rank": rank,
                 "tier": rank_tier(rank),
+                "coverage_warning": coverage_note(req.lat, req.lon),
                 "source": "live_satellite",
                 "note": "Computed from a real-time Sentinel-2 / MODIS / SRTM extraction at these exact coordinates.",
             }
@@ -518,6 +540,7 @@ def predict_reserve(req: ReserveRequest):
         "probability": probability,
         "rank": rank,
         "tier": rank_tier(rank),
+        "coverage_warning": coverage_note(req.lat, req.lon),
         "grid_distance_degrees": round(distance_deg, 4),
         "source": "cached_fallback",
         "note": "Live satellite extraction was unavailable for this coordinate — showing the nearest already-analyzed grid point instead.",

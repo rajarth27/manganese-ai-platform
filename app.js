@@ -456,6 +456,14 @@
     }
 
     function renderGeologicalTelemetry(data) {
+        // Warn when the coordinate sits outside the model's trained region —
+        // otherwise an extrapolated rank looks identical to a supported one.
+        const cw = $('#coverageWarning');
+        if (cw) {
+            cw.textContent = data.coverage_warning || '';
+            cw.classList.toggle('visible', Boolean(data.coverage_warning));
+        }
+
         // Display the percentile RANK, not the raw probability. The classifier
         // is not calibrated in absolute terms; its ordering is what we trust.
         const rank = (typeof data.rank === 'number') ? data.rank : data.probability * 100;
