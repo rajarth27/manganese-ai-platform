@@ -278,9 +278,7 @@ def get_root_causes(input_row_df, top_n=4):
         return {"Status": "Root cause analysis unavailable on this deployment."}
     try:
         shap_values = shap_explainer.shap_values(input_row_df)
-        # Both branches were identical in the original — for a regressor
-        # shap_values is a plain array, so row 0 is what we want either way.
-        values = shap_values[0]
+        values = shap_values[0] if isinstance(shap_values, list) else shap_values[0]
         feature_names = input_row_df.columns
 
         negative_impacts = {}
@@ -292,17 +290,10 @@ def get_root_causes(input_row_df, top_n=4):
         if total_loss == 0:
             return {"Status": "No major negative drivers identified."}
 
-        # Percentages are shares of ALL negative drivers, but only the top_n are
-        # returned — so they legitimately sum to less than 100. Report the
-        # remainder explicitly rather than leaving the gap unexplained.
-        ranked = sorted(negative_impacts.items(), key=lambda x: x[1], reverse=True)
         breakdown = {
             feat: round((impact / total_loss) * 100, 1)
-            for feat, impact in ranked[:top_n]
+            for feat, impact in sorted(negative_impacts.items(), key=lambda x: x[1], reverse=True)[:top_n]
         }
-        remainder = round(100.0 - sum(breakdown.values()), 1)
-        if remainder >= 1.0:
-            breakdown["other factors"] = remainder
         return breakdown
     except Exception as e:
         return {"Status": f"Root cause calculation failed: {str(e)}"}
@@ -472,6 +463,40 @@ def health_check():
         "shap_available": SHAP_AVAILABLE and shap_explainer is not None,
         "live_satellite_available": EE_AVAILABLE and manganese_model is not None,
     }
+
+@app.get("/debug_ee")
+def debug_ee():
+    """Temporary diagnostic — REMOVE BEFORE THE DEMO. Reports exactly why
+    Earth Engine did or did not initialize, without digging through logs."""
+    return {
+        "ee_available": EE_AVAILABLE,
+        "ee_error": EE_ERROR,
+        "service_account": SERVICE_ACCOUNT_EMAIL,
+        "gee_key_json_env_set": bool(os.environ.get("GEE_KEY_JSON")),
+        "key_path_checked": EE_KEY_PATH,
+        "key_path_exists": os.path.exists(EE_KEY_PATH),
+        "secrets_dir_contents": glob.glob("/etc/secrets/*"),
+        "manganese_model_loaded": manganese_model is not None,
+        "feature_cols_loaded": reserve_feature_cols is not None,
+    }
+
+
+# The exploration model was trained on central-Indian spectral signatures only.
+# Outside this envelope its output is extrapolation, and the API should say so
+# rather than return a confident-looking rank for Paris.
+TRAINED_BOUNDS = {"lat_min": 18.0, "lat_max": 24.0, "lon_min": 76.0, "lon_max": 84.0}
+
+
+def coverage_note(lat, lon):
+    b = TRAINED_BOUNDS
+    if b["lat_min"] <= lat <= b["lat_max"] and b["lon_min"] <= lon <= b["lon_max"]:
+        return None
+    return (
+        f"Coordinate is outside the model's trained region "
+        f"({b['lat_min']}-{b['lat_max']}\u00b0N, {b['lon_min']}-{b['lon_max']}\u00b0E). "
+        f"This rank is an extrapolation and should not be relied on."
+    )
+
 
 @app.post("/predict_reserve")
 def predict_reserve(req: ReserveRequest):
