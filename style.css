@@ -1704,3 +1704,33 @@ body {
     flex-basis: 100%; font-size: 0.68rem; line-height: 1.5;
     color: var(--text-muted); margin-top: 4px;
 }
+
+/* ── Equipment consistency warning ─────────────────────────── */
+.equip-warning { display: none; }
+.equip-warning.visible {
+    display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px;
+    padding: 11px 14px; border-radius: 8px; font-size: 0.8rem; line-height: 1.5;
+    background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.28);
+    color: var(--risk-medium, #f59e0b);
+}
+.equip-warning-icon {
+    flex: 0 0 18px; height: 18px; border-radius: 50%; text-align: center;
+    line-height: 18px; font-weight: 800; font-size: 0.72rem;
+    background: var(--risk-medium, #f59e0b); color: #0b1220;
+}
+
+/* ── Which fields differ between baseline and scenario ─────── */
+.changed-fields { display: none; }
+.changed-fields.visible {
+    display: block; margin: 16px 0 8px; padding: 13px 16px; border-radius: 8px;
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle);
+    font-size: 0.78rem; color: var(--text-secondary); line-height: 1.9;
+}
+.cf-head {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--text-muted); margin-bottom: 8px;
+}
+.cf-item {
+    display: inline-block; margin-right: 16px; white-space: nowrap;
+}
+.cf-item b { color: var(--text-primary); font-weight: 600; }

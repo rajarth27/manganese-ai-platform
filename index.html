@@ -40,7 +40,7 @@
                 </div>
                 <div class="brand-meta">
                     <div class="brand-title">GEO-MN // INTEL</div>
-                    <div class="brand-tag">MINING COMMAND v2.4</div>
+                    <div class="brand-tag">Manganese planning platform</div>
                 </div>
             </div>
         </div>
@@ -77,11 +77,11 @@
             <div class="telemetry-card">
                 <div class="telemetry-header">
                     <span class="status-indicator-dot online" id="statusDot"></span>
-                    <span class="telemetry-text" id="statusText">TELEMETRY ONLINE</span>
+                    <span class="telemetry-text" id="statusText">SYSTEM ONLINE</span>
                 </div>
                 <div class="telemetry-details">
                     <div class="tel-row">
-                        <span>Active Sector</span>
+                        <span>Region</span>
                         <span class="mono-badge">Central India</span>
                     </div>
                     <div class="tel-row">
@@ -89,7 +89,7 @@
                         <span class="mono-badge">0.25° (~27 km)</span>
                     </div>
                     <div class="tel-row">
-                        <span>ML Engine</span>
+                        <span>Model</span>
                         <span class="mono-badge">RF-100 Trees</span>
                     </div>
                 </div>
@@ -130,7 +130,7 @@
             <div class="section active" id="section-dashboard">
                 <div class="command-hero-banner">
                     <div class="hero-left">
-                        <h2>Mining Intelligence & Resource Forecasting</h2>
+                        <h2>Manganese exploration and production planning</h2>
                         <p>Real-time fusion of satellite multispectral imagery, Land Surface Temperature (LST), and dispatch fleet operational parameters for manganese mine management.</p>
                     </div>
                     <div class="hero-actions">
@@ -356,6 +356,7 @@
                     <button type="button" class="preset-btn" id="presetCrisis">🚜 Fleet Breakdown Crisis</button>
                 </div>
 
+                <div id="sfEquipWarning" class="equip-warning"></div>
                 <div class="preset-scenario-row">
                     <span class="preset-lead-text">Load a shift scenario:</span>
                     <button type="button" class="sf-preset-chip" data-preset="optimal">Optimal shift &middot; LOW</button>
@@ -375,7 +376,7 @@
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
                                 </span>
                                 <div>
-                                    <h4>Fleet & Machinery Availability</h4>
+                                    <h4>Equipment and fleet</h4>
                                     <span class="sub">Mechanical uptime and dispatch telemetry</span>
                                 </div>
                             </div>
@@ -412,14 +413,14 @@
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
                                 </span>
                                 <div>
-                                    <h4>Environmental & Weather</h4>
+                                    <h4>Weather and ground conditions</h4>
                                     <span class="sub">Pit drainage and pit surface telemetry</span>
                                 </div>
                             </div>
 
                             <div class="param-row">
                                 <div class="param-label-group">
-                                    <label for="sf-rainfall">Precipitation (mm)</label>
+                                    <label for="sf-rainfall">Rainfall (mm)</label>
                                     <span class="param-value-pill" id="val-rainfall">12.0 mm</span>
                                 </div>
                                 <input type="range" class="custom-range" id="sf-rainfall" min="0" max="200" step="0.5" value="12.0">
@@ -446,7 +447,7 @@
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                                 </span>
                                 <div>
-                                    <h4>Drill-Blast & Haul Delays</h4>
+                                    <h4>Drilling, blasting and haulage delays</h4>
                                     <span class="sub">Cycle times and shift production quotas</span>
                                 </div>
                             </div>
@@ -480,7 +481,7 @@
                     <div class="form-submit-row">
                         <button type="submit" class="cmd-btn cmd-btn-primary cmd-btn-lg" id="btnPredictShortfall">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                            <span>Execute Risk & Shortfall Prediction</span>
+                            <span>Forecast this shift</span>
                             <span class="spinner"></span>
                         </button>
                     </div>
@@ -493,7 +494,7 @@
                             <span class="banner-icon">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
                             </span>
-                            <h3>Shift Production Risk Assessment</h3>
+                            <h3>Shift forecast</h3>
                         </div>
                         <div id="riskTierBadge" class="risk-pill-badge">EVALUATING</div>
                     </div>
@@ -527,8 +528,8 @@
                         <!-- SHAP Root Cause Attribution -->
                         <div class="diagnostic-card">
                             <div class="diag-header">
-                                <h4>SHAP Root-Cause Attribution Diagnostics</h4>
-                                <span class="diag-sub">Quantified operational shortfall drivers</span>
+                                <h4>What is costing you the most output</h4>
+                                <span class="diag-sub">Ranked by how much each factor contributes</span>
                             </div>
                             <div class="root-cause-bars" id="rootCausesContainer"></div>
                         </div>
@@ -536,8 +537,8 @@
                         <!-- Prescriptive AI Engineering Directives -->
                         <div class="diagnostic-card">
                             <div class="diag-header">
-                                <h4>Prescriptive Operational Directives</h4>
-                                <span class="diag-sub">Real-time mitigation actions</span>
+                                <h4>What to do about it</h4>
+                                <span class="diag-sub">Suggested actions for this shift</span>
                             </div>
                             <div class="recommendations-list" id="recommendationsContainer"></div>
                         </div>
@@ -551,7 +552,7 @@
             <div class="section" id="section-simulator">
                 <div class="sim-header-card">
                     <div>
-                        <h3>Operational Scenario Modeling & Sensitivity Analysis</h3>
+                        <h3>Compare two ways of running the shift</h3>
                         <p>Simulate the impact of fleet reallocation, weather resilience measures, or blast rescheduling before committing capital.</p>
                     </div>
                 </div>
@@ -565,8 +566,8 @@
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
                                 </span>
                                 <div>
-                                    <h4>Simulated Fleet Setup</h4>
-                                    <span class="sub">Hypothetical equipment numbers</span>
+                                    <h4>Equipment and fleet</h4>
+                                    <span class="sub">Fleet you are considering</span>
                                 </div>
                             </div>
                             <div class="param-row">
@@ -599,8 +600,8 @@
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
                                 </span>
                                 <div>
-                                    <h4>Weather Stress Testing</h4>
-                                    <span class="sub">Simulated environmental extremes</span>
+                                    <h4>Weather and ground conditions</h4>
+                                    <span class="sub">Conditions you want to test against</span>
                                 </div>
                             </div>
                             <div class="param-row">
@@ -630,8 +631,8 @@
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                                 </span>
                                 <div>
-                                    <h4>Delays & Scale Target</h4>
-                                    <span class="sub">Target stress boundaries</span>
+                                    <h4>Delays and target</h4>
+                                    <span class="sub">Delays and the tonnage you are aiming for</span>
                                 </div>
                             </div>
                             <div class="param-row">
@@ -658,14 +659,16 @@
                         </div>
                     </div>
 
-                    <div class="sim-mode-row">
+                    <div id="simEquipWarning" class="equip-warning"></div>
+                <div class="sim-mode-row">
+                        <button type="button" class="cmd-btn" id="btnCopyBaseline">Copy baseline &rarr; scenario</button>
                         <label for="sim-mode">Comparison mode</label>
                         <select id="sim-mode">
                             <option value="what_if">What-if</option>
                             <option value="optimization">Optimisation</option>
                             <option value="stress_test">Stress test</option>
                         </select>
-                        <span class="sim-mode-hint">Baseline is taken from the Shortfall Prediction form. Mode frames the summary wording only &mdash; both sides use the same model.</span>
+                        <span class="sim-mode-hint">The baseline comes from the Production Shortfall page. Copy it across first, then change only what you want to test &mdash; otherwise both forms differ in ways you did not intend.</span>
                     </div>
 
                     <div class="form-submit-row">
@@ -684,7 +687,7 @@
                             <span class="banner-icon">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                             </span>
-                            <h3>Simulated Scenario Outcome</h3>
+                            <h3>How the scenario turns out</h3>
                         </div>
                         <div id="simRiskBadge" class="risk-pill-badge">EVALUATING</div>
                     </div>
@@ -705,20 +708,21 @@
                         </div>
                     </div>
 
+                    <div id="simChangedFields" class="changed-fields"></div>
                     <div id="simSummary" class="sim-summary"></div>
 
                     <div class="diagnostic-card">
                         <div class="diag-header">
                             <h4>Baseline vs Scenario</h4>
-                            <span class="diag-sub">Delta across efficiency, output and shortfall</span>
+                            <span class="diag-sub">Side by side, with the difference</span>
                         </div>
                         <div id="simComparison"></div>
                     </div>
 
                     <div class="diagnostic-card">
                         <div class="diag-header">
-                            <h4>Scenario Root-Cause Attribution</h4>
-                            <span class="diag-sub">SHAP contribution to the simulated shortfall</span>
+                            <h4>What drove the scenario shortfall</h4>
+                            <span class="diag-sub">Ranked by contribution to the scenario shortfall</span>
                         </div>
                         <div class="root-cause-bars" id="simRootCauses"></div>
                     </div>
@@ -726,8 +730,8 @@
                     <!-- Historical Scenario Table -->
                     <div class="scenario-history-card">
                         <div class="diag-header">
-                            <h4>Recent Shift Simulations Ledger</h4>
-                            <span class="diag-sub">Multi-scenario variance comparison</span>
+                            <h4>Your recent comparisons</h4>
+                            <span class="diag-sub">Your last few scenario runs</span>
                         </div>
                         <div class="table-responsive">
                             <table class="enterprise-table">

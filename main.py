@@ -290,6 +290,35 @@ def get_root_causes(input_row_df, top_n=4):
     except Exception as e:
         return {"Status": f"Root cause calculation failed: {str(e)}"}
 
+# A shift is assumed to be 8 hours. Availability is the fraction of that time
+# the fleet is actually productive, so it cannot exceed the time left after
+# downtime and maintenance are subtracted. We warn rather than reject: the
+# figures are operator estimates and may legitimately be rough.
+SHIFT_HOURS = 8.0
+
+
+def check_equipment_consistency(req):
+    """Flags physically contradictory equipment inputs. Never blocks."""
+    warnings = []
+    lost = req.equipment_downtime + req.maintenance_hours
+
+    if lost > SHIFT_HOURS:
+        warnings.append(
+            f"Downtime ({req.equipment_downtime:g} h) plus maintenance "
+            f"({req.maintenance_hours:g} h) is {lost:g} h, longer than the "
+            f"{SHIFT_HOURS:g} h shift."
+        )
+    else:
+        implied = round(1.0 - lost / SHIFT_HOURS, 3)
+        if req.equipment_availability > implied + 0.01:
+            warnings.append(
+                f"Availability of {req.equipment_availability:.0%} is not possible with "
+                f"{lost:g} h lost in an {SHIFT_HOURS:g} h shift — the most it could be "
+                f"is {implied:.0%}."
+            )
+    return warnings
+
+
 NO_RISK_MESSAGE = "No significant risk factors detected — production on track."
 
 
@@ -345,6 +374,8 @@ def evaluate_scenario(req: ShortfallRequest):
         "root_causes": get_root_causes(row),
         "risk_flags": len(flags),
         "recommendations": flags or [NO_RISK_MESSAGE],
+        "input_warnings": check_equipment_consistency(req),
+        "inputs": req.model_dump(),
     }
 
 
@@ -534,11 +565,21 @@ def simulate_scenario(req: SimulateRequest):
         "risk_flags_change": scen["risk_flags"] - base["risk_flags"],
     }
 
+    # The baseline and scenario come from two INDEPENDENT forms, so a user who
+    # edits two fields can unknowingly change nine. Report exactly what differs
+    # so the comparison can never be silently contaminated.
+    b_in, s_in = req.baseline.model_dump(), req.scenario.model_dump()
+    changed = [
+        {"field": k, "baseline": b_in[k], "scenario": s_in[k]}
+        for k in b_in if b_in[k] != s_in[k]
+    ]
+
     return {
         "mode": req.mode,
         "baseline": base,
         "scenario": scen,
         "delta": delta,
+        "changed_fields": changed,
         "summary": build_simulation_summary(req.mode, base, scen, delta),
     }
 

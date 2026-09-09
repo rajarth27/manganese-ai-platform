@@ -791,6 +791,65 @@
         });
     }
 
+    // ── Equipment consistency (mirrors check_equipment_consistency in main.py) ──
+    const SHIFT_HOURS = 8.0;
+    const FIELD_LABELS = {
+        equipment_availability: 'Equipment availability', equipment_downtime: 'Downtime',
+        maintenance_hours: 'Maintenance', drilling_delay: 'Drilling delay',
+        blast_delay: 'Blast delay', rainfall: 'Rainfall', soil_moisture: 'Soil moisture',
+        temperature: 'Temperature', truck_count: 'Truck count',
+        haulage_delay: 'Haulage delay', target_production: 'Target',
+    };
+
+    function checkEquipment(prefix) {
+        const box = $(`#${prefix}EquipWarning`);
+        if (!box) return;
+        const num = f => parseFloat($(`#${prefix}-${f}`)?.value);
+        const avail = num('equipment_availability');
+        const lost = num('equipment_downtime') + num('maintenance_hours');
+        if (![avail, lost].every(Number.isFinite)) { box.innerHTML = ''; return; }
+
+        let msg = '';
+        if (lost > SHIFT_HOURS) {
+            msg = `Downtime plus maintenance is ${lost}h, longer than the ${SHIFT_HOURS}h shift.`;
+        } else {
+            const implied = 1 - lost / SHIFT_HOURS;
+            if (avail > implied + 0.01) {
+                msg = `Availability of ${Math.round(avail * 100)}% is not possible with ${lost}h lost `
+                    + `in an ${SHIFT_HOURS}h shift — the most it could be is ${Math.round(implied * 100)}%.`;
+            }
+        }
+        box.innerHTML = msg ? `<span class="equip-warning-icon">!</span>${msg}` : '';
+        box.classList.toggle('visible', Boolean(msg));
+    }
+
+    function initEquipmentValidation() {
+        ['sf', 'sim'].forEach(prefix => {
+            ['equipment_availability', 'equipment_downtime', 'maintenance_hours'].forEach(f => {
+                const el = $(`#${prefix}-${f}`);
+                if (el) el.addEventListener('input', () => checkEquipment(prefix));
+            });
+            checkEquipment(prefix);
+        });
+    }
+
+    // ── Copy the baseline across so only intended fields differ ──
+    function initCopyBaseline() {
+        const btn = $('#btnCopyBaseline');
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+            Object.keys(FIELD_LABELS).forEach(f => {
+                const src = $(`#sf-${f}`), dst = $(`#sim-${f}`);
+                if (src && dst) {
+                    dst.value = src.value;
+                    dst.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+            checkEquipment('sim');
+            showToast('Baseline copied. Now change only what you want to test.', 'info');
+        });
+    }
+
     function renderShortfallResults(data) {
         const area = $('#shortfallResults');
         if (!area) return;
@@ -812,6 +871,13 @@
         if ($('#resRiskFlags')) $('#resRiskFlags').textContent = `${data.risk_flags} Detected`;
 
         renderRootCauseChart($('#rootCausesContainer'), data.root_causes);
+
+        // Backend echoes any physically impossible equipment combination.
+        const warnBox = $('#sfEquipWarning');
+        if (warnBox && data.input_warnings && data.input_warnings.length) {
+            warnBox.innerHTML = `<span class="equip-warning-icon">!</span>${data.input_warnings.join(' ')}`;
+            warnBox.classList.add('visible');
+        }
 
         // Prescriptive Engineering Directives
         const recBox = $('#recommendationsContainer');
@@ -891,6 +957,23 @@
         if ($('#simPredictedProd')) $('#simPredictedProd').textContent = `${scen.predicted_production.toFixed(1)} T`;
         if ($('#simShortfallTonnes')) $('#simShortfallTonnes').textContent = `${scen.shortfall_tonnes.toFixed(1)} T`;
         if ($('#simShortfallPct')) $('#simShortfallPct').textContent = `${scen.shortfall_pct.toFixed(1)}% Target Shortfall`;
+
+        // Every field that differs between the two states. Without this, editing
+        // two fields while nine others silently differ looks like a model bug.
+        const cf = $('#simChangedFields');
+        if (cf) {
+            const list = data.changed_fields || [];
+            if (!list.length) {
+                cf.innerHTML = '<b>Identical inputs</b> — baseline and scenario are the same, so there is nothing to compare.';
+                cf.className = 'changed-fields visible';
+            } else {
+                const rows = list.map(c =>
+                    `<span class="cf-item"><b>${FIELD_LABELS[c.field] || c.field}</b> ${c.baseline} &rarr; ${c.scenario}</span>`
+                ).join('');
+                cf.innerHTML = `<div class="cf-head">${list.length} field${list.length === 1 ? '' : 's'} differ between baseline and scenario</div>${rows}`;
+                cf.className = 'changed-fields visible';
+            }
+        }
 
         // Plain-English verdict from the backend
         const sumBox = $('#simSummary');
@@ -989,6 +1072,8 @@
         initShortfallEngine();
         initShortfallPresets();
         initSimulatorEngine();
+        initEquipmentValidation();
+        initCopyBaseline();
 
         // Restore the section named in the URL (#simulator, #reserve, ...).
         // Runs last so every module has initialised and the Leaflet map can
