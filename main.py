@@ -164,27 +164,35 @@ class ReserveRequest(BaseModel):
     lon: float = Field(..., description="Longitude, e.g. 80.23")
 
 class ShortfallRequest(BaseModel):
-    equipment_availability: float = Field(..., ge=0, le=1)
+    """Operating state for one shift.
+
+    Only constraint is non-negativity, and only where a negative value is
+    physically meaningless (you cannot have -3 trucks or -5 mm of rain).
+    Temperature is unbounded because it can legitimately go below zero.
+    No upper bounds: this is a risk predictor, and capping inputs would stop
+    it forecasting exactly the extreme scenarios it exists to warn about.
+    """
+    equipment_availability: float = Field(..., ge=0)
     equipment_downtime: float = Field(..., ge=0)
     maintenance_hours: float = Field(..., ge=0)
     drilling_delay: float = Field(..., ge=0)
     blast_delay: float = Field(..., ge=0)
     rainfall: float = Field(..., ge=0)
-    soil_moisture: float = Field(..., ge=0, le=1)
+    soil_moisture: float = Field(..., ge=0)
     temperature: float
     truck_count: int = Field(..., ge=0)
     haulage_delay: float = Field(..., ge=0)
-    target_production: float = Field(..., gt=0)
+    target_production: float = Field(..., ge=0)
 
 
 class SimulateRequest(BaseModel):
-    """Two full operating states plus a mode label.
+    """Two full operating states.
 
-    mode does NOT change the arithmetic — both sides are scored by the same
-    model. It only frames the plain-English summary, so the endpoint stays
-    honest about what is actually being computed.
+    There is no mode field. All three framings — what-if, optimisation and
+    stress test — are returned together, because they were never separate
+    calculations: the same model scores both sides regardless. Making the user
+    pick one just hid two thirds of the reading.
     """
-    mode: Literal["what_if", "optimization", "stress_test"] = "what_if"
     baseline: ShortfallRequest
     scenario: ShortfallRequest
 
@@ -574,13 +582,18 @@ def simulate_scenario(req: SimulateRequest):
         for k in b_in if b_in[k] != s_in[k]
     ]
 
+    summaries = {
+        m: build_simulation_summary(m, base, scen, delta)
+        for m in ("what_if", "optimization", "stress_test")
+    }
+
     return {
-        "mode": req.mode,
+        "summaries": summaries,
+        "summary": summaries["what_if"],   # kept for older clients
         "baseline": base,
         "scenario": scen,
         "delta": delta,
         "changed_fields": changed,
-        "summary": build_simulation_summary(req.mode, base, scen, delta),
     }
 
 # ---------------------------------------------------------------------------

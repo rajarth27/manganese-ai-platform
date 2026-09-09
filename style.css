@@ -1734,3 +1734,18 @@ body {
     display: inline-block; margin-right: 16px; white-space: nowrap;
 }
 .cf-item b { color: var(--text-primary); font-weight: 600; }
+
+/* ── Three-line scenario summary ───────────────────────────── */
+.sum-line {
+    display: grid; grid-template-columns: 104px 1fr; gap: 12px;
+    padding: 7px 0; align-items: baseline;
+}
+.sum-line + .sum-line { border-top: 1px solid rgba(255,255,255,0.05); }
+.sum-tag {
+    font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--text-muted); font-weight: 700;
+}
+.sum-text { font-size: 0.85rem; line-height: 1.55; color: var(--text-secondary); }
+@media (max-width: 640px) {
+    .sum-line { grid-template-columns: 1fr; gap: 2px; }
+}

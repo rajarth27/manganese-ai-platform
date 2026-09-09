@@ -742,31 +742,22 @@
         return data;
     }
 
-    // Shift presets.
-    //
-    // REAL: target_production = 5,225 T/day. Derived from MOIL's published
-    //   FY 2025-26 output of 19.07 lakh MT / 365. Cross-checks against March
-    //   2026 (1.64 lakh MT = 5,290 T/day).
-    // SYNTHETIC: every operational field below (availability, truck count,
-    //   downtime, delays). MOIL does not publish shift-level operations data,
-    //   and the regressor these are tuned against is itself trained on
-    //   synthetic data. Values were chosen so each preset lands in the tier its
-    //   label claims (7.5 / 12.4 / 20.8 / 55.6 % shortfall) — re-check the tier
-    //   if you change one.
-    // Weather values are typical for the Nagpur-Balaghat belt, not measured.
+    // Shift presets — illustrative operating states, one per risk tier.
+    // Values are tuned so each lands in the tier its label claims
+    // (7.5 / 12.4 / 20.8 / 55.6 % shortfall). Re-check the tier if you edit one.
     const SHIFT_PRESETS = {
         optimal: { equipment_availability: 0.98, equipment_downtime: 0.3, maintenance_hours: 0.5,
                    drilling_delay: 0.1, blast_delay: 0.1, rainfall: 1.0, soil_moisture: 0.15,
-                   temperature: 29.0, truck_count: 28, haulage_delay: 0.2, target_production: 5225 },
+                   temperature: 29.0, truck_count: 28, haulage_delay: 0.2, target_production: 1000 },
         normal:  { equipment_availability: 0.98, equipment_downtime: 0.3, maintenance_hours: 0.5,
                    drilling_delay: 0.1, blast_delay: 0.1, rainfall: 1.0, soil_moisture: 0.15,
-                   temperature: 29.0, truck_count: 15, haulage_delay: 0.2, target_production: 5225 },
+                   temperature: 29.0, truck_count: 15, haulage_delay: 0.2, target_production: 1000 },
         strained:{ equipment_availability: 0.80, equipment_downtime: 0.3, maintenance_hours: 0.5,
                    drilling_delay: 0.1, blast_delay: 0.1, rainfall: 15.0, soil_moisture: 0.15,
-                   temperature: 29.0, truck_count: 16, haulage_delay: 0.2, target_production: 5225 },
+                   temperature: 29.0, truck_count: 16, haulage_delay: 0.2, target_production: 1000 },
         monsoon: { equipment_availability: 0.78, equipment_downtime: 4.5, maintenance_hours: 6.0,
                    drilling_delay: 2.5, blast_delay: 1.5, rainfall: 45.0, soil_moisture: 0.72,
-                   temperature: 27.0, truck_count: 12, haulage_delay: 2.0, target_production: 5225 },
+                   temperature: 27.0, truck_count: 12, haulage_delay: 2.0, target_production: 1000 },
     };
 
     function applyPreset(prefix, preset) {
@@ -921,11 +912,7 @@
             // to comparing the scenario against itself so nothing crashes.
             const scenario = gatherFormData('sim');
             const baseline = gatherFormDataSafe('sf', scenario);
-            const payload = {
-                mode: $('#sim-mode') ? $('#sim-mode').value : 'what_if',
-                baseline: baseline,
-                scenario: scenario,
-            };
+            const payload = { baseline: baseline, scenario: scenario };
             try {
                 const data = await apiPost('/simulate', payload);
                 renderSimulatorResults(data);
@@ -975,26 +962,50 @@
             }
         }
 
-        // Plain-English verdict from the backend
+        // All three framings, one line each. They are not separate calculations —
+        // the same model scores both sides — so there is no reason to make the
+        // user pick one and hide the other two.
         const sumBox = $('#simSummary');
         if (sumBox) {
             const improving = d.production_change_tonnes > 0;
             sumBox.className = `sim-summary ${improving ? 'sim-summary-good' : (d.production_change_tonnes < 0 ? 'sim-summary-bad' : '')}`;
-            sumBox.textContent = data.summary;
+            const s = data.summaries || {};
+            const rows = [
+                ['What-if', s.what_if],
+                ['Optimisation', s.optimization],
+                ['Stress test', s.stress_test],
+            ];
+            sumBox.innerHTML = rows.map(([label, text]) =>
+                `<div class="sum-line"><span class="sum-tag">${label}</span>` +
+                `<span class="sum-text">${text && text.trim() ? text : 'None.'}</span></div>`
+            ).join('');
         }
 
         // Baseline vs scenario comparison table
         const cmp = $('#simComparison');
         if (cmp) {
-            // Colour follows the SIGN, not the meaning: positive green,
-            // negative red, zero neutral. Note this means a growing shortfall
-            // (+ T) reads green even though it is a worse outcome — the third
-            // argument is kept only so the call sites stay self-documenting.
-            const signed = (v, unit, _higherIsBetter, decimals = 1) => {
+            // Colour follows the METRIC, not the sign. Efficiency and output are
+            // better when they rise; shortfall and risk flags are better when
+            // they fall. Zero is neutral.
+            const signed = (v, unit, higherIsBetter, decimals = 1) => {
                 let cls = 'delta-flat';
-                if (v > 0) cls = 'delta-good';
-                else if (v < 0) cls = 'delta-bad';
+                if (v > 0) cls = higherIsBetter ? 'delta-good' : 'delta-bad';
+                else if (v < 0) cls = higherIsBetter ? 'delta-bad' : 'delta-good';
                 return `<span class="${cls}">${v > 0 ? '+' : ''}${v.toFixed(decimals)}${unit}</span>`;
+            };
+
+            // Risk tier: colour each tier by its own severity, so the milder of
+            // the two always reads green and the harsher always reads red,
+            // whichever direction the move went.
+            const TIER_RANK = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
+            const tierArrow = (from, to) => {
+                if (from === to) return `<span class="delta-flat">unchanged</span>`;
+                const a = TIER_RANK[from] ?? 0, b = TIER_RANK[to] ?? 0;
+                const fromCls = a < b ? 'delta-good' : 'delta-bad';
+                const toCls   = a < b ? 'delta-bad'  : 'delta-good';
+                return `<span class="${fromCls}">${from}</span>`
+                     + `<span class="delta-flat"> &rarr; </span>`
+                     + `<span class="${toCls}">${to}</span>`;
             };
             cmp.innerHTML = `
                 <table class="cmp-table">
@@ -1024,7 +1035,7 @@
                             <td>Risk tier</td>
                             <td>${base.risk_tier}</td>
                             <td>${scen.risk_tier}</td>
-                            <td>${d.risk_tier_changed ? d.risk_tier_change : 'unchanged'}</td>
+                            <td>${tierArrow(base.risk_tier, scen.risk_tier)}</td>
                         </tr>
                         <tr>
                             <td>Risk flags</td>
