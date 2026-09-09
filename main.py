@@ -58,28 +58,28 @@ app.add_middleware(
 
 try:
     reserve_cache = pd.read_csv(os.path.join(BASE_DIR, "reserve_cache.csv"))
-except FileNotFoundError:
+except Exception as e:
     reserve_cache = None
-    print("WARNING: reserve_cache.csv not found — /predict_reserve will fail.")
+    print(f"WARNING: reserve_cache.csv load failed: {e}")
 
 try:
     production_model = joblib.load(os.path.join(BASE_DIR, "production_model.pkl"))
     prod_feature_cols = joblib.load(os.path.join(BASE_DIR, "prod_feature_columns.pkl"))
-except FileNotFoundError:
+except Exception as e:
     production_model = None
     prod_feature_cols = None
-    print("WARNING: production_model.pkl or prod_feature_columns.pkl not found — /predict_shortfall will fail.")
+    print(f"WARNING: production_model.pkl load failed: {e}")
 
 try:
     manganese_model = joblib.load(os.path.join(BASE_DIR, "manganese_model.pkl"))
     reserve_feature_cols = joblib.load(os.path.join(BASE_DIR, "feature_columns.pkl"))
     X_train_reserve = joblib.load(os.path.join(BASE_DIR, "X_train.pkl"))
     X_train_means = X_train_reserve.mean()
-except FileNotFoundError:
+except Exception as e:
     manganese_model = None
     reserve_feature_cols = None
     X_train_means = None
-    print("WARNING: manganese_model.pkl / feature_columns.pkl / X_train.pkl not found — live reserve scoring disabled.")
+    print(f"WARNING: manganese_model load failed: {e}")
 
 # Build the SHAP explainer once at startup (expensive to rebuild per-request)
 shap_explainer = None
