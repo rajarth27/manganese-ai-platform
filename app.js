@@ -62,6 +62,20 @@
         return res.json();
     }
 
+    // FastAPI validation errors (422) arrive as detail: [{loc, msg, type}, ...].
+    // Flatten them into something readable instead of "[object Object]".
+    function describeApiError(err, status) {
+        const d = err && err.detail;
+        if (Array.isArray(d)) {
+            return d.map(e => {
+                const field = Array.isArray(e.loc) ? e.loc.filter(x => x !== 'body').join('.') : '?';
+                return `${field}: ${e.msg}`;
+            }).join('; ');
+        }
+        if (typeof d === 'string') return d;
+        return `HTTP ${status}`;
+    }
+
     async function apiPost(endpoint, body) {
         const res = await fetch(`${API_BASE}${endpoint}`, {
             method: 'POST',
@@ -70,7 +84,9 @@
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({ detail: res.statusText }));
-            throw new Error(err.detail || `HTTP ${res.status}`);
+            const msg = describeApiError(err, res.status);
+            console.error(`POST ${endpoint} -> ${res.status}`, { sent: body, response: err });
+            throw new Error(msg);
         }
         return res.json();
     }
@@ -102,8 +118,18 @@
         });
     }
 
-    function showSection(sectionId) {
+    const VALID_SECTIONS = ['dashboard', 'reserve', 'shortfall', 'simulator'];
+
+    function showSection(sectionId, updateHash = true) {
+        if (!VALID_SECTIONS.includes(sectionId)) sectionId = 'dashboard';
         state.currentSection = sectionId;
+
+        // Reflect the section in the URL so a reload (or a shared link) lands
+        // back here instead of resetting to the dashboard. replaceState avoids
+        // stacking a history entry for every sidebar click.
+        if (updateHash && window.location.hash !== `#${sectionId}`) {
+            history.replaceState(null, '', `#${sectionId}`);
+        }
 
         $$('.nav-link').forEach(l => l.classList.remove('active'));
         $(`.nav-link[data-section="${sectionId}"]`)?.classList.add('active');
@@ -699,6 +725,25 @@
         container.appendChild(axis);
     }
 
+    // Returns gatherFormData(prefix), or `fallback` if the form is missing or
+    // any field is blank/non-numeric. parseFloat('') is NaN, and JSON.stringify
+    // serialises NaN as null — which Pydantic rejects with a 422.
+    function gatherFormDataSafe(prefix, fallback) {
+        let data;
+        try {
+            data = gatherFormData(prefix);
+        } catch (e) {
+            console.warn(`Form "${prefix}" not found; using fallback values.`);
+            return fallback;
+        }
+        const bad = Object.entries(data).filter(([, v]) => typeof v !== 'number' || !isFinite(v));
+        if (bad.length) {
+            console.warn(`Form "${prefix}" has invalid fields, using fallback:`, bad.map(b => b[0]));
+            return fallback;
+        }
+        return data;
+    }
+
     function renderShortfallResults(data) {
         const area = $('#shortfallResults');
         if (!area) return;
@@ -761,16 +806,12 @@
             // baseline (current operating conditions), the simulator form is
             // the scenario. If the shortfall form isn't on the page, fall back
             // to comparing the scenario against itself so nothing crashes.
-            let baseline;
-            try {
-                baseline = gatherFormData('sf');
-            } catch (e) {
-                baseline = gatherFormData('sim');
-            }
+            const scenario = gatherFormData('sim');
+            const baseline = gatherFormDataSafe('sf', scenario);
             const payload = {
                 mode: $('#sim-mode') ? $('#sim-mode').value : 'what_if',
                 baseline: baseline,
-                scenario: gatherFormData('sim'),
+                scenario: scenario,
             };
             try {
                 const data = await apiPost('/simulate', payload);
@@ -876,7 +917,7 @@
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>#${state.simHistory.length - idx}</td>
-                <td>${run.scenario_target.toLocaleString()} T</td>
+                <td>${run.scenario.target_production.toLocaleString()} T</td>
                 <td>${run.scenario.predicted_production.toFixed(1)} T</td>
                 <td style="color:${run.scenario.shortfall_pct > 15 ? 'var(--risk-high)' : 'var(--text-secondary)'}; font-weight:700;">
                     ${run.scenario.shortfall_pct.toFixed(1)}%
@@ -895,6 +936,20 @@
         initReserveMap();
         initShortfallEngine();
         initSimulatorEngine();
+
+        // Restore the section named in the URL (#simulator, #reserve, ...).
+        // Runs last so every module has initialised and the Leaflet map can
+        // size itself correctly if we land straight on the prospecting view.
+        const fromHash = window.location.hash.replace('#', '');
+        showSection(VALID_SECTIONS.includes(fromHash) ? fromHash : 'dashboard');
+
+        // Browser back/forward between sections.
+        window.addEventListener('hashchange', () => {
+            const sec = window.location.hash.replace('#', '');
+            if (VALID_SECTIONS.includes(sec) && sec !== state.currentSection) {
+                showSection(sec, false);
+            }
+        });
     });
 
 })();
