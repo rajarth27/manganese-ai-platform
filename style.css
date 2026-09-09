@@ -1629,18 +1629,7 @@ body {
     .shap-label { font-size: 0.68rem; }
 }
 
-/* ── Simulator: mode selector, summary, comparison table ───── */
-.sim-mode-row {
-    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-    padding: 14px 0; border-top: 1px solid var(--border-subtle);
-}
-.sim-mode-row label { font-size: 0.75rem; letter-spacing: 0.04em; color: var(--text-secondary); text-transform: uppercase; }
-.sim-mode-row select {
-    background: rgba(255,255,255,0.04); color: var(--text-primary);
-    border: 1px solid var(--border-subtle); border-radius: 6px; padding: 7px 10px; font-size: 0.82rem;
-}
-.sim-mode-hint { font-size: 0.68rem; color: var(--text-muted); flex: 1 1 260px; }
-
+/* ── Simulator: summary, comparison table ───────────────────── */
 .sim-summary {
     margin: 16px 0; padding: 14px 16px; border-radius: 8px; font-size: 0.88rem; line-height: 1.55;
     background: rgba(255,255,255,0.03); border-left: 3px solid var(--border-subtle); color: var(--text-secondary);
@@ -1648,6 +1637,12 @@ body {
 .sim-summary:empty { display: none; }
 .sim-summary-good { border-left-color: var(--accent-emerald); color: var(--text-primary); }
 .sim-summary-bad { border-left-color: var(--risk-high); color: var(--text-primary); }
+.sim-summary-line { margin-bottom: 8px; }
+.sim-summary-line:last-child { margin-bottom: 0; }
+.sim-summary-tag {
+    font-weight: 700; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.04em;
+    color: var(--text-muted); margin-right: 4px;
+}
 
 .cmp-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .cmp-table th {

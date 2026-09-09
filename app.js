@@ -863,6 +863,79 @@
         });
     }
 
+    // Ordering used to tell whether a risk tier move is an improvement
+    // (higher tier -> lower tier) or a deterioration (lower tier -> higher
+    // tier). Anything not in the map is treated as unknown/neutral.
+    const RISK_TIER_RANK = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
+
+    // Plain-English verdict, ported from the backend's build_simulation_summary()
+    // so all three mode framings (what-if / optimisation / stress test) can be
+    // shown at once from a single /simulate response instead of one at a time
+    // behind a dropdown. Mirrors main.py line for line — keep the two in sync.
+    function buildSimSummaryLine(mode, base, scen, delta) {
+        try {
+            if (!base || !scen || !delta) return null;
+
+            const lead = {
+                what_if: 'Under this scenario',
+                optimization: 'With these optimisations applied',
+                stress_test: 'Under this stress test',
+            }[mode] || 'Under this scenario';
+
+            const prod = delta.production_change_tonnes;
+            const short = delta.shortfall_change_tonnes;
+            const effPp = delta.efficiency_change_pct_points;
+
+            let core;
+            if (Math.abs(prod) < 0.05) {
+                core = `output is effectively unchanged at ${scen.predicted_production.toFixed(1)} T against a ${scen.target_production.toFixed(0)} T target`;
+            } else {
+                const verb = prod > 0 ? 'rises' : 'falls';
+                core = `output ${verb} by ${Math.abs(prod).toFixed(1)} T to ${scen.predicted_production.toFixed(1)} T (${effPp >= 0 ? '+' : ''}${effPp.toFixed(1)} pp efficiency)`;
+                if (Math.abs(short) < 0.05) {
+                    core += scen.shortfall_tonnes < 0.05
+                        ? ', and the target is still met in full'
+                        : `, while the shortfall holds at ${scen.shortfall_tonnes.toFixed(1)} T`;
+                } else {
+                    core += `, and the shortfall ${short < 0 ? 'shrinks' : 'grows'} by ${Math.abs(short).toFixed(1)} T to ${scen.shortfall_tonnes.toFixed(1)} T`;
+                }
+            }
+
+            let tail = '';
+            if (base.risk_tier !== scen.risk_tier) {
+                tail = ` Risk tier moves from ${base.risk_tier} to ${scen.risk_tier}.`;
+            } else if (delta.risk_flags_change !== 0) {
+                const n = delta.risk_flags_change;
+                tail = ` ${Math.abs(n)} risk flag${Math.abs(n) !== 1 ? 's' : ''} ${n > 0 ? 'added' : 'cleared'}.`;
+            }
+
+            let verdict = '';
+            if (mode === 'optimization') {
+                verdict = prod > 0.05
+                    ? ' This qualifies as an improvement.'
+                    : ' Note: this scenario does NOT improve on the baseline.';
+            } else if (mode === 'stress_test') {
+                if (prod < -0.05) {
+                    const margin = scen.predicted_production - 0.85 * base.predicted_production;
+                    verdict = margin >= 0
+                        ? ` Output holds above 85% of baseline (margin +${margin.toFixed(1)} T).`
+                        : ` Output falls below 85% of baseline (margin ${margin.toFixed(1)} T) — resilience gap.`;
+                } else {
+                    verdict = ' Note: these conditions are not harsher than the baseline.';
+                }
+            }
+
+            if (base.target_production !== scen.target_production) {
+                tail += ` Targets differ (${base.target_production.toFixed(0)} T vs ${scen.target_production.toFixed(0)} T), so compare efficiency rather than tonnage.`;
+            }
+
+            const line = `${lead}, ${core}.${tail}${verdict}`.trim();
+            return line || null;
+        } catch (err) {
+            return null;
+        }
+    }
+
     function renderSimulatorResults(data) {
         const area = $('#simResults');
         if (!area) return;
@@ -883,27 +956,53 @@
         if ($('#simShortfallTonnes')) $('#simShortfallTonnes').textContent = `${scen.shortfall_tonnes.toFixed(1)} T`;
         if ($('#simShortfallPct')) $('#simShortfallPct').textContent = `${scen.shortfall_pct.toFixed(1)}% Target Shortfall`;
 
-        // Plain-English verdict from the backend
+        // What-if / optimisation / stress-test framings, all shown together
+        // (dropdown removed) — one line per mode, derived from this single
+        // /simulate response. Falls back to "None" if a line can't be built.
         const sumBox = $('#simSummary');
         if (sumBox) {
+            const modeLabels = {
+                what_if: 'What-if',
+                optimization: 'Optimisation',
+                stress_test: 'Stress test',
+            };
+            const lines = ['what_if', 'optimization', 'stress_test'].map(mode => {
+                const text = buildSimSummaryLine(mode, base, scen, d);
+                return `<div class="sim-summary-line"><span class="sim-summary-tag">${modeLabels[mode]}:</span> ${text || 'None'}</div>`;
+            });
             const improving = d.production_change_tonnes > 0;
             sumBox.className = `sim-summary ${improving ? 'sim-summary-good' : (d.production_change_tonnes < 0 ? 'sim-summary-bad' : '')}`;
-            sumBox.textContent = data.summary;
+            sumBox.innerHTML = lines.join('');
         }
 
         // Baseline vs scenario comparison table
         const cmp = $('#simComparison');
         if (cmp) {
-            // Colour follows the SIGN, not the meaning: positive green,
-            // negative red, zero neutral. Note this means a growing shortfall
-            // (+ T) reads green even though it is a worse outcome — the third
-            // argument is kept only so the call sites stay self-documenting.
-            const signed = (v, unit, _higherIsBetter, decimals = 1) => {
+            // Colour follows what the change MEANS, not just its sign.
+            // higherIsBetter = true  -> positive is green, negative is red   (efficiency, production)
+            // higherIsBetter = false -> negative is green, positive is red  (shortfall, risk flags:
+            //   a shrinking shortfall or fewer risk flags is the good outcome even though the delta is negative)
+            const signed = (v, unit, higherIsBetter, decimals = 1) => {
                 let cls = 'delta-flat';
-                if (v > 0) cls = 'delta-good';
-                else if (v < 0) cls = 'delta-bad';
+                if (v > 0) cls = higherIsBetter ? 'delta-good' : 'delta-bad';
+                else if (v < 0) cls = higherIsBetter ? 'delta-bad' : 'delta-good';
                 return `<span class="${cls}">${v > 0 ? '+' : ''}${v.toFixed(decimals)}${unit}</span>`;
             };
+
+            // Risk tier: lower tier = green, higher tier = red. A move UP the
+            // tier ladder (e.g. MEDIUM -> HIGH) is a deterioration (red); a
+            // move DOWN (e.g. CRITICAL -> HIGH) is an improvement (green).
+            let tierChangeHtml = 'unchanged';
+            if (d.risk_tier_changed) {
+                const baseRank = RISK_TIER_RANK[base.risk_tier];
+                const scenRank = RISK_TIER_RANK[scen.risk_tier];
+                let tierCls = 'delta-flat';
+                if (baseRank !== undefined && scenRank !== undefined) {
+                    tierCls = scenRank > baseRank ? 'delta-bad' : (scenRank < baseRank ? 'delta-good' : 'delta-flat');
+                }
+                tierChangeHtml = `<span class="${tierCls}">${d.risk_tier_change}</span>`;
+            }
+
             cmp.innerHTML = `
                 <table class="cmp-table">
                     <thead>
@@ -932,7 +1031,7 @@
                             <td>Risk tier</td>
                             <td>${base.risk_tier}</td>
                             <td>${scen.risk_tier}</td>
-                            <td>${d.risk_tier_changed ? d.risk_tier_change : 'unchanged'}</td>
+                            <td class="mono-val">${tierChangeHtml}</td>
                         </tr>
                         <tr>
                             <td>Risk flags</td>
