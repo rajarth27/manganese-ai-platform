@@ -114,7 +114,7 @@
                 </div>
                 <div class="telemetry-pill">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    <span>Latency: 8ms</span>
+                    <span id="latencyPill">Latency: &mdash;</span>
                 </div>
                 <div class="sector-dropdown-pill">
                     <span>Region: MP / MH / OD Mineral Belt</span>
@@ -327,9 +327,9 @@
                                     <span class="label">Grid Offset Distance</span>
                                     <span class="val mono-text" id="resDistance">—</span>
                                 </div>
-                                <div class="spec-data-row">
-                                    <span class="label">Primary Mineral</span>
-                                    <span class="val">Manganese Oxide (Pyrolusite)</span>
+                                <div class="spec-data-row" id="primaryMineralRow" style="display:none;">
+                                    <span class="label">Target Mineral</span>
+                                    <span class="val" id="primaryMineralVal">&mdash;</span>
                                 </div>
                             </div>
 

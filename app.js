@@ -54,7 +54,9 @@
 
     // ── HTTP API Client ──────────────────────────────────────
     async function apiGet(endpoint) {
+        const t0 = performance.now();
         const res = await fetch(`${API_BASE}${endpoint}`);
+        recordLatency(performance.now() - t0, endpoint);
         if (!res.ok) {
             const err = await res.json().catch(() => ({ detail: res.statusText }));
             throw new Error(err.detail || `HTTP ${res.status}`);
@@ -76,12 +78,27 @@
         return `HTTP ${status}`;
     }
 
+    // Real measured round-trip, not a decorative constant. Live Earth Engine
+    // queries take seconds, not milliseconds — the pill must tell the truth.
+    function recordLatency(ms, endpoint) {
+        const pill = $('#latencyPill');
+        if (!pill) return;
+        const shown = ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
+        pill.textContent = `Latency: ${shown}`;
+        pill.title = `Last call: ${endpoint || 'API'} — ${Math.round(ms)}ms round trip`;
+        // Live Earth Engine extraction genuinely takes seconds. Show that
+        // honestly rather than letting a slow call pass as routine.
+        pill.style.color = ms >= 3000 ? 'var(--risk-medium)' : '';
+    }
+
     async function apiPost(endpoint, body) {
+        const t0 = performance.now();
         const res = await fetch(`${API_BASE}${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
+        recordLatency(performance.now() - t0, endpoint);
         if (!res.ok) {
             const err = await res.json().catch(() => ({ detail: res.statusText }));
             const msg = describeApiError(err, res.status);
@@ -458,6 +475,23 @@
     function renderGeologicalTelemetry(data) {
         // Warn when the coordinate sits outside the model's trained region —
         // otherwise an extrapolated rank looks identical to a supported one.
+        // Only name a target mineral where the rank supports it. The old build
+        // printed "Manganese Oxide (Pyrolusite)" for every coordinate on Earth,
+        // including 3%-rank points outside the trained region — a mineralogical
+        // claim the model never makes.
+        const mineralRow = $('#primaryMineralRow');
+        const mineralVal = $('#primaryMineralVal');
+        if (mineralRow && mineralVal) {
+            const rk = (typeof data.rank === 'number') ? data.rank : 0;
+            const supported = rk >= 50 && !data.coverage_warning;
+            mineralRow.style.display = supported ? '' : 'none';
+            if (supported) {
+                mineralVal.textContent = rk >= 75
+                    ? 'Manganese oxide association (Sausar-type) — indicated'
+                    : 'Manganese oxide association — possible';
+            }
+        }
+
         const cw = $('#coverageWarning');
         if (cw) {
             cw.textContent = data.coverage_warning || '';
