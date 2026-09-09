@@ -146,73 +146,59 @@
                 </div>
 
                 <!-- Industrial Status Cards -->
-                <div class="command-metrics-grid">
-                    <div class="command-stat-card">
-                        <div class="stat-top">
-                            <span class="stat-tag">INGESTION STATUS</span>
-                            <span class="stat-chip chip-success" id="statApiStatus">HEALTHY</span>
-                        </div>
-                        <div class="stat-main-value">200 OK</div>
-                        <div class="stat-footer-text">FastAPI High-Throughput Service</div>
+                <!-- What this platform does, for the person using it -->
+                <div class="brief-grid">
+                    <div class="brief-card">
+                        <div class="brief-num">01</div>
+                        <h4>Where should we drill next?</h4>
+                        <p>Enter any coordinate in the Sausar belt and the platform pulls live Sentinel-2, MODIS and SRTM data for that exact point, then ranks it against the wider manganese belt. Use it to prioritise exploration near existing MOIL leases.</p>
+                        <button class="action-btn" data-navigate="reserve">Open Satellite Prospecting</button>
                     </div>
-
-                    <div class="command-stat-card">
-                        <div class="stat-top">
-                            <span class="stat-tag">GEOLOGICAL CACHE</span>
-                            <span class="stat-chip chip-cyan" id="statReserveGrid">768 CELLS</span>
-                        </div>
-                        <div class="stat-main-value mono-val">24 × 32</div>
-                        <div class="stat-footer-text">18.0°N–23.75°N // 76.0°E–83.75°E</div>
+                    <div class="brief-card">
+                        <div class="brief-num">02</div>
+                        <h4>Will this shift hit target?</h4>
+                        <p>Feed in fleet availability, weather and delay figures for the coming shift. The model returns projected tonnage, a risk tier, and a SHAP breakdown naming which factor is costing you the most output.</p>
+                        <button class="action-btn" data-navigate="shortfall">Open Shortfall Prediction</button>
                     </div>
-
-                    <div class="command-stat-card">
-                        <div class="stat-top">
-                            <span class="stat-tag">DISPATCH REGRESSOR</span>
-                            <span class="stat-chip chip-cyan" id="statProdModel">ONLINE</span>
-                        </div>
-                        <div class="stat-main-value mono-val">RF (100)</div>
-                        <div class="stat-footer-text">10-Factor Production Efficiency Model</div>
-                    </div>
-
-                    <div class="command-stat-card">
-                        <div class="stat-top">
-                            <span class="stat-tag">ROOT-CAUSE ENGINE</span>
-                            <span class="stat-chip chip-purple" id="statShap">SHAP ACTIVE</span>
-                        </div>
-                        <div class="stat-main-value mono-val">TreeExplainer</div>
-                        <div class="stat-footer-text">Local Feature Attribution Diagnostics</div>
+                    <div class="brief-card">
+                        <div class="brief-num">03</div>
+                        <h4>What if we changed something?</h4>
+                        <p>Compare two operating states side by side &mdash; add trucks, reschedule blasting, model a monsoon week &mdash; and see the tonnage difference before committing equipment or capital.</p>
+                        <button class="action-btn" data-navigate="simulator">Open What-If Simulation</button>
                     </div>
                 </div>
 
-                <!-- Platform Capability Summary -->
                 <div class="system-architecture-card">
                     <div class="card-section-header">
-                        <h3>Geological & Operational Telemetry Architecture</h3>
-                        <span class="header-sub">System Documentation & Sensor Sources</span>
+                        <h3>How to read the outputs</h3>
+                        <span class="header-sub">What each number means, and what it does not</span>
                     </div>
                     <div class="architecture-specs-grid">
                         <div class="spec-block">
-                            <div class="spec-num">01</div>
-                            <h4>Multispectral Surface Analysis</h4>
-                            <p>Detects hydrothermal clay alteration (Clay Hydroxyl Index) and gossan cap iron oxides using VNIR/SWIR satellite bands to locate subsurface manganese lenses.</p>
+                            <div class="spec-num">&#9679;</div>
+                            <h4>Prospectivity rank, not ore grade</h4>
+                            <p>Prospecting returns a percentile rank within the analyzed belt &mdash; a drilling priority order. It is not a manganese percentage, a tonnage estimate, or proof of a deposit.</p>
                         </div>
                         <div class="spec-block">
-                            <div class="spec-num">02</div>
-                            <h4>MODIS Thermal Radiometry</h4>
-                            <p>Integrates satellite Land Surface Temperature (LST) and NDVI vegetation masking. Open pit bedrock displays distinct thermal inertia compared to heavy foliage.</p>
+                            <div class="spec-num">&#9679;</div>
+                            <h4>Surface signals only</h4>
+                            <p>Optical satellites read the ground surface. Eight of MOIL&rsquo;s eleven mines are underground and Balaghat works at roughly 383 m, so this maps host-horizon expression, not buried orebodies.</p>
                         </div>
                         <div class="spec-block">
-                            <div class="spec-num">03</div>
-                            <h4>Meteo-Logistical Forecasting</h4>
-                            <p>Correlates precipitation surges, soil saturation, and shovel-truck haulage cycle delays to predict daily tonnage shortfalls before shift completion.</p>
+                            <div class="spec-num">&#9679;</div>
+                            <h4>Risk tiers are calibrated</h4>
+                            <p>LOW below 10% shortfall, MEDIUM to 18%, HIGH to 30%, CRITICAL above. Bands match the model&rsquo;s measured output range so every tier is actually reachable.</p>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- ══════════════════════════════════════════════════════════
-                 MODULE 2: SATELLITE PROSPECTING (RESERVE EXPLORER)
-                 ══════════════════════════════════════════════════════════ -->
+                <div class="platform-status-strip">
+                    <span class="status-dot" id="statApiStatus">HEALTHY</span>
+                    <span>Prospecting grid: <b id="statReserveGrid">768 cells</b></span>
+                    <span>Shortfall model: <b id="statProdModel">online</b></span>
+                    <span>Root-cause engine: <b id="statShap">SHAP active</b></span>
+                </div>
+
             <div class="section" id="section-reserve">
                 <!-- Location Target Bar -->
                 <div class="target-control-bar">
@@ -368,6 +354,14 @@
                     <button type="button" class="preset-btn" id="presetOptimal">☀️ Normal Dry Shift</button>
                     <button type="button" class="preset-btn" id="presetMonsoon">⛈️ Heavy Monsoon Downpour</button>
                     <button type="button" class="preset-btn" id="presetCrisis">🚜 Fleet Breakdown Crisis</button>
+                </div>
+
+                <div class="preset-scenario-row">
+                    <span class="preset-lead-text">Load a shift scenario:</span>
+                    <button type="button" class="sf-preset-chip" data-preset="optimal">Optimal shift &middot; LOW</button>
+                    <button type="button" class="sf-preset-chip" data-preset="normal">Normal shift &middot; MEDIUM</button>
+                    <button type="button" class="sf-preset-chip" data-preset="strained">Fleet strain &middot; HIGH</button>
+                    <button type="button" class="sf-preset-chip" data-preset="monsoon">Monsoon breakdown &middot; CRITICAL</button>
                 </div>
 
                 <form class="enterprise-form" id="shortfallForm">

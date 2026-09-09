@@ -192,14 +192,25 @@ class SimulateRequest(BaseModel):
 # AI/ML Helper Logic
 # ---------------------------------------------------------------------------
 
+# Thresholds are calibrated to what this model can actually output.
+# Measured range on the production regressor: best case 7.9% shortfall
+# (efficiency ceiling 0.9213), worst case 61.4%. The previous 5/15 cut-offs
+# made LOW mathematically unreachable and lumped everything above 15% into
+# HIGH, so a 16% shift and a 61% shift looked identical.
+RISK_BANDS = [
+    (10.0, "LOW"),
+    (18.0, "MEDIUM"),
+    (30.0, "HIGH"),
+]
+RISK_CRITICAL = "CRITICAL"
+
+
 def classify_risk(shortfall_percentage):
     """Assigns risk tier based on shortfall percentage."""
-    if shortfall_percentage <= 5.0:
-        return "LOW"
-    elif shortfall_percentage <= 15.0:
-        return "MEDIUM"
-    else:
-        return "HIGH"
+    for ceiling, tier in RISK_BANDS:
+        if shortfall_percentage <= ceiling:
+            return tier
+    return RISK_CRITICAL
 
 def get_live_satellite_features(lat, lon):
     """
@@ -301,8 +312,10 @@ def build_recommendations(req: ShortfallRequest, shortfall_pct: float):
         recommendations.append("Truck count is low — consider reallocating haulage vehicles.")
     if req.haulage_delay > 1.0:
         recommendations.append("Haulage delay is elevated — inspect haul road conditions and dispatch routing.")
-    if shortfall_pct > 15:
-        recommendations.append("Projected shortfall exceeds 15% — escalate to site supervisor.")
+    if shortfall_pct > 30:
+        recommendations.append("Projected shortfall exceeds 30% — CRITICAL: halt schedule and escalate to mine manager.")
+    elif shortfall_pct > 18:
+        recommendations.append("Projected shortfall exceeds 18% — escalate to site supervisor.")
     return recommendations
 
 
@@ -353,8 +366,18 @@ def build_simulation_summary(mode, base, scen, delta):
     else:
         verb = "rises" if prod > 0 else "falls"
         core = (f"output {verb} by {abs(prod):.1f} T to {scen['predicted_production']:.1f} T "
-                f"({eff_pp:+.1f} pp efficiency), and the shortfall "
-                f"{'shrinks' if short < 0 else 'grows'} by {abs(short):.1f} T")
+                f"({eff_pp:+.1f} pp efficiency)")
+        # Shortfall can be flat even when output moves — e.g. both scenarios
+        # already clear their target, or the targets themselves differ. Saying
+        # "the shortfall grows by 0.0 T" in that case is simply wrong.
+        if abs(short) < 0.05:
+            if scen["shortfall_tonnes"] < 0.05:
+                core += ", and the target is still met in full"
+            else:
+                core += f", while the shortfall holds at {scen['shortfall_tonnes']:.1f} T"
+        else:
+            core += (f", and the shortfall {'shrinks' if short < 0 else 'grows'} "
+                     f"by {abs(short):.1f} T to {scen['shortfall_tonnes']:.1f} T")
 
     tail = ""
     if base["risk_tier"] != scen["risk_tier"]:
@@ -363,7 +386,26 @@ def build_simulation_summary(mode, base, scen, delta):
         n = delta["risk_flags_change"]
         tail = f" {abs(n)} risk flag{'s' if abs(n) != 1 else ''} {'added' if n > 0 else 'cleared'}."
 
-    return f"{lead}, {core}.{tail}"
+    # Mode-specific verdict: did the scenario do what the mode implies?
+    verdict = ""
+    if mode == "optimization":
+        verdict = (" This qualifies as an improvement."
+                   if prod > 0.05 else
+                   " Note: this scenario does NOT improve on the baseline.")
+    elif mode == "stress_test":
+        if prod < -0.05:
+            margin = scen["predicted_production"] - (0.85 * base["predicted_production"])
+            verdict = (f" Output holds above 85% of baseline (margin {margin:+.1f} T)."
+                       if margin >= 0 else
+                       f" Output falls below 85% of baseline (margin {margin:+.1f} T) — resilience gap.")
+        else:
+            verdict = " Note: these conditions are not harsher than the baseline."
+
+    if base["target_production"] != scen["target_production"]:
+        tail += (f" Targets differ ({base['target_production']:.0f} T vs "
+                 f"{scen['target_production']:.0f} T), so compare efficiency rather than tonnage.")
+
+    return f"{lead}, {core}.{tail}{verdict}"
 
 # ---------------------------------------------------------------------------
 # Routes

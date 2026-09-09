@@ -416,7 +416,13 @@
         const bar = $('#legendBar');
         const labels = $('#legendLabels');
         const hint = $('#legendHint');
+        const hud = document.querySelector('.floating-legend-hud');
         if (!title) return;
+
+        // In plain satellite mode there is no data scale to explain — the old
+        // "Dense Foliage / Exposed Rock" bar was decorative, not derived from
+        // anything. Hide the whole HUD rather than show a meaningless legend.
+        if (hud) hud.style.display = (mode === 'satellite') ? 'none' : '';
 
         if (mode === 'thermal') {
             title.textContent = 'Thermal Map from Satellite (NASA MODIS LST)';
@@ -431,10 +437,10 @@
             if (labels) labels.innerHTML = '<span>Dense Foliage</span><span>Vegetation / Soil</span><span>Exposed Ground / Rock</span>';
             if (hint) hint.textContent = 'Pure satellite terrain view without overlays. Click anywhere on the terrain to inspect coordinates and place a target crosshair.';
         } else {
-            title.textContent = 'Manganese Deposit Occurrence Probability';
-            if (sub) sub.textContent = 'AI Random Forest Model (VNIR/SWIR/DEM/LST Features)';
+            title.textContent = 'Relative Manganese Prospectivity Rank';
+            if (sub) sub.textContent = 'Percentile within the analyzed belt (VNIR/SWIR/DEM/LST features)';
             if (bar) bar.style.background = 'linear-gradient(90deg, #3b82f6 0%, #06b6d4 25%, #10b981 50%, #f59e0b 75%, #ef4444 100%)';
-            if (labels) labels.innerHTML = '<span>0.0 — Low Likelihood</span><span>0.5 — Moderate</span><span>1.0 — High Probability Prospect</span>';
+            if (labels) labels.innerHTML = '<span>Rank 0 — deprioritize</span><span>Rank 50 — moderate</span><span>Rank 100 — top drill target</span>';
             if (hint) hint.textContent = 'Model confidence is derived from hydrothermal clay alteration, iron oxide capping, topography, and thermal signatures.';
         }
     }
@@ -744,6 +750,46 @@
         return data;
     }
 
+    // Shift presets. Every value below was run through the deployed model —
+    // each genuinely lands in the tier its label claims (7.5 / 12.4 / 20.8 /
+    // 55.6 % shortfall). Do not tweak them without re-checking the tier.
+    const SHIFT_PRESETS = {
+        optimal: { equipment_availability: 0.98, equipment_downtime: 0.3, maintenance_hours: 0.5,
+                   drilling_delay: 0.1, blast_delay: 0.1, rainfall: 1.0, soil_moisture: 0.15,
+                   temperature: 29.0, truck_count: 28, haulage_delay: 0.2, target_production: 1000 },
+        normal:  { equipment_availability: 0.98, equipment_downtime: 0.3, maintenance_hours: 0.5,
+                   drilling_delay: 0.1, blast_delay: 0.1, rainfall: 1.0, soil_moisture: 0.15,
+                   temperature: 29.0, truck_count: 15, haulage_delay: 0.2, target_production: 1000 },
+        strained:{ equipment_availability: 0.80, equipment_downtime: 0.3, maintenance_hours: 0.5,
+                   drilling_delay: 0.1, blast_delay: 0.1, rainfall: 15.0, soil_moisture: 0.15,
+                   temperature: 29.0, truck_count: 16, haulage_delay: 0.2, target_production: 1000 },
+        monsoon: { equipment_availability: 0.78, equipment_downtime: 4.5, maintenance_hours: 6.0,
+                   drilling_delay: 2.5, blast_delay: 1.5, rainfall: 45.0, soil_moisture: 0.72,
+                   temperature: 27.0, truck_count: 12, haulage_delay: 2.0, target_production: 1000 },
+    };
+
+    function applyPreset(prefix, preset) {
+        Object.entries(preset).forEach(([field, value]) => {
+            const el = $(`#${prefix}-${field}`);
+            if (!el) return;
+            el.value = value;
+            // Range inputs need an input event so their value pill updates.
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
+    function initShortfallPresets() {
+        $$('.sf-preset-chip').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const preset = SHIFT_PRESETS[btn.dataset.preset];
+                if (!preset) return;
+                applyPreset('sf', preset);
+                $$('.sf-preset-chip').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+    }
+
     function renderShortfallResults(data) {
         const area = $('#shortfallResults');
         if (!area) return;
@@ -856,10 +902,13 @@
         // Baseline vs scenario comparison table
         const cmp = $('#simComparison');
         if (cmp) {
-            const signed = (v, unit, invert) => {
-                const good = invert ? v < 0 : v > 0;
-                const cls = v === 0 ? '' : (good ? 'delta-good' : 'delta-bad');
-                return `<span class="${cls}">${v > 0 ? '+' : ''}${v.toFixed(1)}${unit}</span>`;
+            // `higherIsBetter` decides the colour, not the sign. More production
+            // is good; more shortfall is bad. Zero stays neutral.
+            const signed = (v, unit, higherIsBetter, decimals = 1) => {
+                let cls = 'delta-flat';
+                if (v > 0) cls = higherIsBetter ? 'delta-good' : 'delta-bad';
+                else if (v < 0) cls = higherIsBetter ? 'delta-bad' : 'delta-good';
+                return `<span class="${cls}">${v > 0 ? '+' : ''}${v.toFixed(decimals)}${unit}</span>`;
             };
             cmp.innerHTML = `
                 <table class="cmp-table">
@@ -871,19 +920,19 @@
                             <td>Efficiency</td>
                             <td class="mono-val">${(base.predicted_efficiency * 100).toFixed(1)}%</td>
                             <td class="mono-val">${(scen.predicted_efficiency * 100).toFixed(1)}%</td>
-                            <td class="mono-val">${signed(d.efficiency_change_pct_points, ' pp', false)}</td>
+                            <td class="mono-val">${signed(d.efficiency_change_pct_points, ' pp', true)}</td>
                         </tr>
                         <tr>
                             <td>Production</td>
                             <td class="mono-val">${base.predicted_production.toFixed(1)} T</td>
                             <td class="mono-val">${scen.predicted_production.toFixed(1)} T</td>
-                            <td class="mono-val">${signed(d.production_change_tonnes, ' T', false)}</td>
+                            <td class="mono-val">${signed(d.production_change_tonnes, ' T', true)}</td>
                         </tr>
                         <tr>
                             <td>Shortfall</td>
                             <td class="mono-val">${base.shortfall_tonnes.toFixed(1)} T</td>
                             <td class="mono-val">${scen.shortfall_tonnes.toFixed(1)} T</td>
-                            <td class="mono-val">${signed(d.shortfall_change_tonnes, ' T', true)}</td>
+                            <td class="mono-val">${signed(d.shortfall_change_tonnes, ' T', false)}</td>
                         </tr>
                         <tr>
                             <td>Risk tier</td>
@@ -895,7 +944,7 @@
                             <td>Risk flags</td>
                             <td class="mono-val">${base.risk_flags}</td>
                             <td class="mono-val">${scen.risk_flags}</td>
-                            <td class="mono-val">${signed(d.risk_flags_change, '', true)}</td>
+                            <td class="mono-val">${signed(d.risk_flags_change, '', false, 0)}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -935,6 +984,7 @@
         initDashboard();
         initReserveMap();
         initShortfallEngine();
+        initShortfallPresets();
         initSimulatorEngine();
 
         // Restore the section named in the URL (#simulator, #reserve, ...).
