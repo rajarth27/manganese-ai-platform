@@ -12,6 +12,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 # Defensive SHAP import — if this fails to install or import, the rest of the
@@ -174,6 +176,18 @@ class ShortfallRequest(BaseModel):
     haulage_delay: float = Field(..., ge=0)
     target_production: float = Field(..., gt=0)
 
+
+class SimulateRequest(BaseModel):
+    """Two full operating states plus a mode label.
+
+    mode does NOT change the arithmetic — both sides are scored by the same
+    model. It only frames the plain-English summary, so the endpoint stays
+    honest about what is actually being computed.
+    """
+    mode: Literal["what_if", "optimization", "stress_test"] = "what_if"
+    baseline: ShortfallRequest
+    scenario: ShortfallRequest
+
 # ---------------------------------------------------------------------------
 # AI/ML Helper Logic
 # ---------------------------------------------------------------------------
@@ -265,7 +279,17 @@ def get_root_causes(input_row_df, top_n=4):
     except Exception as e:
         return {"Status": f"Root cause calculation failed: {str(e)}"}
 
+NO_RISK_MESSAGE = "No significant risk factors detected — production on track."
+
+
 def build_recommendations(req: ShortfallRequest, shortfall_pct: float):
+    """Returns ONLY genuinely triggered risk conditions — may be empty.
+
+    The 'all clear' message is deliberately NOT added here. Callers append it
+    for display, so that len() of this list is the true count of triggered
+    conditions. Previously the fallback message was inside the list, which made
+    risk_flags report 1 even when nothing was wrong.
+    """
     recommendations = []
     if req.equipment_availability < 0.75:
         recommendations.append("Equipment availability is low — schedule preventive maintenance.")
@@ -275,9 +299,71 @@ def build_recommendations(req: ShortfallRequest, shortfall_pct: float):
         recommendations.append("Drilling/blasting delays are significant — review supply chain.")
     if req.truck_count < 10:
         recommendations.append("Truck count is low — consider reallocating haulage vehicles.")
+    if req.haulage_delay > 1.0:
+        recommendations.append("Haulage delay is elevated — inspect haul road conditions and dispatch routing.")
     if shortfall_pct > 15:
         recommendations.append("Projected shortfall exceeds 15% — escalate to site supervisor.")
-    return recommendations or ["No significant risk factors detected — production on track."]
+    return recommendations
+
+
+def evaluate_scenario(req: ShortfallRequest):
+    """Single source of truth for scoring one operating state.
+
+    Used by /predict_shortfall and twice by /simulate, so the baseline and the
+    scenario can never drift apart through duplicated arithmetic.
+    """
+    # target_production is excluded from the model row — the model predicts an
+    # efficiency ratio from operational conditions only.
+    row = pd.DataFrame([req.model_dump()])[prod_feature_cols]
+    efficiency = max(0.0, float(production_model.predict(row)[0]))
+    produced = efficiency * req.target_production
+    shortfall = max(0.0, req.target_production - produced)
+    shortfall_pct = round((shortfall / req.target_production) * 100, 2) if req.target_production > 0 else 0.0
+
+    flags = build_recommendations(req, shortfall_pct)
+
+    return {
+        "predicted_efficiency": round(efficiency, 4),
+        "predicted_production": round(produced, 2),
+        "target_production": req.target_production,
+        "shortfall_tonnes": round(shortfall, 2),
+        "shortfall_pct": shortfall_pct,
+        "risk_tier": classify_risk(shortfall_pct),
+        "root_causes": get_root_causes(row),
+        "risk_flags": len(flags),
+        "recommendations": flags or [NO_RISK_MESSAGE],
+    }
+
+
+def build_simulation_summary(mode, base, scen, delta):
+    """Plain-English one-liner describing what the scenario changed."""
+    lead = {
+        "what_if": "Under this scenario",
+        "optimization": "With these optimisations applied",
+        "stress_test": "Under this stress test",
+    }.get(mode, "Under this scenario")
+
+    prod = delta["production_change_tonnes"]
+    short = delta["shortfall_change_tonnes"]
+    eff_pp = delta["efficiency_change_pct_points"]
+
+    if abs(prod) < 0.05:
+        core = (f"output is effectively unchanged at {scen['predicted_production']:.1f} T "
+                f"against a {scen['target_production']:.0f} T target")
+    else:
+        verb = "rises" if prod > 0 else "falls"
+        core = (f"output {verb} by {abs(prod):.1f} T to {scen['predicted_production']:.1f} T "
+                f"({eff_pp:+.1f} pp efficiency), and the shortfall "
+                f"{'shrinks' if short < 0 else 'grows'} by {abs(short):.1f} T")
+
+    tail = ""
+    if base["risk_tier"] != scen["risk_tier"]:
+        tail = f" Risk tier moves from {base['risk_tier']} to {scen['risk_tier']}."
+    elif delta["risk_flags_change"] != 0:
+        n = delta["risk_flags_change"]
+        tail = f" {abs(n)} risk flag{'s' if abs(n) != 1 else ''} {'added' if n > 0 else 'cleared'}."
+
+    return f"{lead}, {core}.{tail}"
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -370,59 +456,48 @@ def predict_shortfall(req: ShortfallRequest):
     if production_model is None or prod_feature_cols is None:
         raise HTTPException(status_code=503, detail="Production model not loaded.")
 
-    # target_production is intentionally excluded from the model's input row —
-    # the model predicts an efficiency ratio based on operational conditions only.
-    row = pd.DataFrame([req.model_dump()])[prod_feature_cols]
-    predicted_efficiency = float(production_model.predict(row)[0])
-    predicted_efficiency = max(0.0, predicted_efficiency)
-
-    predicted_actual = predicted_efficiency * req.target_production
-
-    shortfall = max(0.0, req.target_production - predicted_actual)
-    shortfall_pct = round((shortfall / req.target_production) * 100, 2) if req.target_production > 0 else 0.0
-
-    risk_tier = classify_risk(shortfall_pct)
-    root_causes = get_root_causes(row)
-    recommendations = build_recommendations(req, shortfall_pct)
-
-    return {
-        "predicted_efficiency": round(predicted_efficiency, 4),
-        "predicted_production": round(predicted_actual, 2),
-        "target_production": req.target_production,
-        "shortfall_pct": shortfall_pct,
-        "risk_tier": risk_tier,
-        "root_causes": root_causes,
-        "risk_flags": len(recommendations),
-        "recommendations": recommendations,
-    }
+    # risk_flags now counts only genuinely triggered conditions — 0 when clear.
+    return evaluate_scenario(req)
 
 @app.post("/simulate")
-def simulate_scenario(req: ShortfallRequest):
-    """What-if simulator — same model, framed as a scenario comparison."""
+def simulate_scenario(req: SimulateRequest):
+    """Scores TWO operating states and returns both plus the delta between them.
+
+    Breaking change: this endpoint no longer accepts a bare ShortfallRequest.
+    The body must be {mode, baseline: {...}, scenario: {...}}. For a single
+    operating state with no comparison, use /predict_shortfall instead.
+    """
     if production_model is None or prod_feature_cols is None:
         raise HTTPException(status_code=503, detail="Production model not loaded.")
 
-    row = pd.DataFrame([req.model_dump()])[prod_feature_cols]
-    predicted_efficiency = float(production_model.predict(row)[0])
-    predicted_efficiency = max(0.0, predicted_efficiency)
+    base = evaluate_scenario(req.baseline)
+    scen = evaluate_scenario(req.scenario)
 
-    predicted = predicted_efficiency * req.target_production
-
-    shortfall = max(0.0, req.target_production - predicted)
-    shortfall_pct = round((shortfall / req.target_production) * 100, 2) if req.target_production > 0 else 0.0
-
-    risk = classify_risk(shortfall_pct)
-    causes = get_root_causes(row)
+    delta = {
+        "efficiency_change": round(scen["predicted_efficiency"] - base["predicted_efficiency"], 4),
+        "efficiency_change_pct_points": round(
+            (scen["predicted_efficiency"] - base["predicted_efficiency"]) * 100, 2
+        ),
+        "production_change_tonnes": round(
+            scen["predicted_production"] - base["predicted_production"], 2
+        ),
+        "shortfall_change_tonnes": round(
+            scen["shortfall_tonnes"] - base["shortfall_tonnes"], 2
+        ),
+        "shortfall_change_pct_points": round(
+            scen["shortfall_pct"] - base["shortfall_pct"], 2
+        ),
+        "risk_tier_change": f"{base['risk_tier']} \u2192 {scen['risk_tier']}",
+        "risk_tier_changed": base["risk_tier"] != scen["risk_tier"],
+        "risk_flags_change": scen["risk_flags"] - base["risk_flags"],
+    }
 
     return {
-        "scenario_target": req.target_production,
-        "simulated_efficiency": round(predicted_efficiency, 4),
-        "simulated_production": round(predicted, 2),
-        "simulated_shortfall": round(shortfall, 2),
-        "simulated_shortfall_pct": shortfall_pct,
-        "simulated_risk": risk,
-        "simulated_root_causes": causes,
-        "message": "Scenario simulated successfully. Compare these results with the current baseline.",
+        "mode": req.mode,
+        "baseline": base,
+        "scenario": scen,
+        "delta": delta,
+        "summary": build_simulation_summary(req.mode, base, scen, delta),
     }
 
 # ---------------------------------------------------------------------------

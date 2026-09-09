@@ -1601,3 +1601,61 @@ body {
         grid-template-columns: 1fr 1fr;
     }
 }
+
+
+/* ── SHAP horizontal bar chart ─────────────────────────────── */
+.shap-chart { display: flex; flex-direction: column; gap: 10px; }
+.shap-row { display: grid; grid-template-columns: 150px 1fr 56px; align-items: center; gap: 12px; }
+.shap-label {
+    font-size: 0.75rem; letter-spacing: 0.02em; color: var(--text-secondary);
+    text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.shap-track { background: rgba(255,255,255,0.04); border-radius: 4px; height: 22px; overflow: hidden; }
+.shap-bar {
+    height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, rgba(6,182,212,0.5), rgba(6,182,212,0.9));
+    transition: width 0.5s cubic-bezier(0.4,0,0.2,1);
+}
+.shap-bar-top { background: linear-gradient(90deg, rgba(245,158,11,0.5), rgba(245,158,11,0.95)); }
+.shap-value { font-size: 0.78rem; color: var(--text-primary); text-align: right; }
+.shap-axis {
+    margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border-subtle);
+    font-size: 0.68rem; color: var(--text-muted); letter-spacing: 0.03em;
+}
+.cause-empty { font-size: 0.8rem; color: var(--text-muted); padding: 8px 0; }
+
+@media (max-width: 640px) {
+    .shap-row { grid-template-columns: 96px 1fr 48px; gap: 8px; }
+    .shap-label { font-size: 0.68rem; }
+}
+
+/* ── Simulator: mode selector, summary, comparison table ───── */
+.sim-mode-row {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 14px 0; border-top: 1px solid var(--border-subtle);
+}
+.sim-mode-row label { font-size: 0.75rem; letter-spacing: 0.04em; color: var(--text-secondary); text-transform: uppercase; }
+.sim-mode-row select {
+    background: rgba(255,255,255,0.04); color: var(--text-primary);
+    border: 1px solid var(--border-subtle); border-radius: 6px; padding: 7px 10px; font-size: 0.82rem;
+}
+.sim-mode-hint { font-size: 0.68rem; color: var(--text-muted); flex: 1 1 260px; }
+
+.sim-summary {
+    margin: 16px 0; padding: 14px 16px; border-radius: 8px; font-size: 0.88rem; line-height: 1.55;
+    background: rgba(255,255,255,0.03); border-left: 3px solid var(--border-subtle); color: var(--text-secondary);
+}
+.sim-summary:empty { display: none; }
+.sim-summary-good { border-left-color: var(--accent-emerald); color: var(--text-primary); }
+.sim-summary-bad { border-left-color: var(--risk-high); color: var(--text-primary); }
+
+.cmp-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.cmp-table th {
+    text-align: left; padding: 9px 10px; font-size: 0.68rem; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--text-muted); border-bottom: 1px solid var(--border-subtle);
+}
+.cmp-table td { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text-secondary); }
+.cmp-table tr:last-child td { border-bottom: none; }
+.cmp-table td:first-child { color: var(--text-primary); font-weight: 600; }
+.delta-good { color: var(--accent-emerald); font-weight: 700; }
+.delta-bad { color: var(--risk-high); font-weight: 700; }

@@ -663,6 +663,16 @@
                         </div>
                     </div>
 
+                    <div class="sim-mode-row">
+                        <label for="sim-mode">Comparison mode</label>
+                        <select id="sim-mode">
+                            <option value="what_if">What-if</option>
+                            <option value="optimization">Optimisation</option>
+                            <option value="stress_test">Stress test</option>
+                        </select>
+                        <span class="sim-mode-hint">Baseline is taken from the Shortfall Prediction form. Mode frames the summary wording only &mdash; both sides use the same model.</span>
+                    </div>
+
                     <div class="form-submit-row">
                         <button type="submit" class="cmd-btn cmd-btn-primary cmd-btn-lg" id="btnRunSimulation">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line></svg>
@@ -698,6 +708,24 @@
                             <div class="kpi-val mono-val" id="simShortfallTonnes">—</div>
                             <span class="kpi-sub" id="simShortfallPct">—</span>
                         </div>
+                    </div>
+
+                    <div id="simSummary" class="sim-summary"></div>
+
+                    <div class="diagnostic-card">
+                        <div class="diag-header">
+                            <h4>Baseline vs Scenario</h4>
+                            <span class="diag-sub">Delta across efficiency, output and shortfall</span>
+                        </div>
+                        <div id="simComparison"></div>
+                    </div>
+
+                    <div class="diagnostic-card">
+                        <div class="diag-header">
+                            <h4>Scenario Root-Cause Attribution</h4>
+                            <span class="diag-sub">SHAP contribution to the simulated shortfall</span>
+                        </div>
+                        <div class="root-cause-bars" id="simRootCauses"></div>
                     </div>
 
                     <!-- Historical Scenario Table -->

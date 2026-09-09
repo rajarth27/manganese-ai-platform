@@ -635,6 +635,70 @@
         };
     }
 
+    // ── SHAP root-cause horizontal bar chart ─────────────────
+    // Bars are scaled to the LARGEST contributor rather than to 100, so the
+    // top driver always fills the track and the relative sizes stay readable
+    // even when the top cause is only 30% of total attributed loss.
+    const CAUSE_LABELS = {
+        equipment_availability: 'Equipment availability',
+        equipment_downtime: 'Equipment downtime',
+        maintenance_hours: 'Maintenance hours',
+        drilling_delay: 'Drilling delay',
+        blast_delay: 'Blast delay',
+        rainfall: 'Rainfall',
+        soil_moisture: 'Soil moisture',
+        temperature: 'Temperature',
+        truck_count: 'Truck count',
+        haulage_delay: 'Haulage delay',
+    };
+
+    function renderRootCauseChart(container, causes) {
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (!causes || typeof causes !== 'object') return;
+
+        const entries = Object.entries(causes).filter(([, v]) => typeof v === 'number');
+
+        // Backend returns {Status: "..."} when SHAP is unavailable or found
+        // no negative drivers — show that message instead of an empty chart.
+        if (entries.length === 0) {
+            const msg = document.createElement('div');
+            msg.className = 'cause-empty';
+            msg.textContent = Object.values(causes)[0] || 'No attribution available.';
+            container.appendChild(msg);
+            return;
+        }
+
+        entries.sort((a, b) => b[1] - a[1]);
+        const max = entries[0][1] || 1;
+
+        const chart = document.createElement('div');
+        chart.className = 'shap-chart';
+
+        entries.forEach(([feature, pct], i) => {
+            const label = CAUSE_LABELS[feature] || feature.replace(/_/g, ' ');
+            const width = Math.max(2, (pct / max) * 100);
+            const row = document.createElement('div');
+            row.className = 'shap-row';
+            row.innerHTML = `
+                <div class="shap-label" title="${label}">${label}</div>
+                <div class="shap-track">
+                    <div class="shap-bar ${i === 0 ? 'shap-bar-top' : ''}" style="width:${width}%"></div>
+                </div>
+                <div class="shap-value mono-val">${pct.toFixed(1)}%</div>
+            `;
+            chart.appendChild(row);
+        });
+
+        const axis = document.createElement('div');
+        axis.className = 'shap-axis';
+        axis.textContent = 'Share of attributed shortfall (SHAP, negative contributors only)';
+
+        container.appendChild(chart);
+        container.appendChild(axis);
+    }
+
     function renderShortfallResults(data) {
         const area = $('#shortfallResults');
         if (!area) return;
@@ -655,30 +719,7 @@
         if ($('#resShortfallPct')) $('#resShortfallPct').textContent = `${data.shortfall_pct.toFixed(1)}% Shortfall`;
         if ($('#resRiskFlags')) $('#resRiskFlags').textContent = `${data.risk_flags} Detected`;
 
-        // SHAP Root Cause Bars
-        const rcBox = $('#rootCausesContainer');
-        if (rcBox) {
-            rcBox.innerHTML = '';
-            const causes = data.root_causes;
-            if (causes && typeof causes === 'object') {
-                Object.keys(causes).forEach(feature => {
-                    const pct = causes[feature];
-                    const friendlyName = feature.replace(/_/g, ' ').toUpperCase();
-                    const item = document.createElement('div');
-                    item.className = 'cause-item';
-                    item.innerHTML = `
-                        <div class="cause-top-line">
-                            <span class="cause-name">${friendlyName}</span>
-                            <span class="cause-pct">${typeof pct === 'number' ? pct.toFixed(1) + '%' : pct}</span>
-                        </div>
-                        <div class="cause-track">
-                            <div class="cause-fill" style="width: ${typeof pct === 'number' ? Math.min(pct, 100) : 50}%;"></div>
-                        </div>
-                    `;
-                    rcBox.appendChild(item);
-                });
-            }
-        }
+        renderRootCauseChart($('#rootCausesContainer'), data.root_causes);
 
         // Prescriptive Engineering Directives
         const recBox = $('#recommendationsContainer');
@@ -716,7 +757,21 @@
             const btn = $('#btnRunSimulation');
             setLoading(btn, true);
 
-            const payload = gatherFormData('sim');
+            // /simulate now compares TWO states: the shortfall form is the
+            // baseline (current operating conditions), the simulator form is
+            // the scenario. If the shortfall form isn't on the page, fall back
+            // to comparing the scenario against itself so nothing crashes.
+            let baseline;
+            try {
+                baseline = gatherFormData('sf');
+            } catch (e) {
+                baseline = gatherFormData('sim');
+            }
+            const payload = {
+                mode: $('#sim-mode') ? $('#sim-mode').value : 'what_if',
+                baseline: baseline,
+                scenario: gatherFormData('sim'),
+            };
             try {
                 const data = await apiPost('/simulate', payload);
                 renderSimulatorResults(data);
@@ -734,16 +789,79 @@
         if (!area) return;
         area.style.display = 'block';
 
+        const base = data.baseline;
+        const scen = data.scenario;
+        const d = data.delta;
+
         const badge = $('#simRiskBadge');
         if (badge) {
-            badge.className = `risk-pill-badge risk-${data.simulated_risk.toLowerCase()}`;
-            badge.textContent = `${data.simulated_risk} SCENARIO RISK`;
+            badge.className = `risk-pill-badge risk-${scen.risk_tier.toLowerCase()}`;
+            badge.textContent = `${scen.risk_tier} SCENARIO RISK`;
         }
 
-        if ($('#simEfficiency')) $('#simEfficiency').textContent = `${(data.simulated_efficiency * 100).toFixed(1)}%`;
-        if ($('#simPredictedProd')) $('#simPredictedProd').textContent = `${data.simulated_production.toFixed(1)} T`;
-        if ($('#simShortfallTonnes')) $('#simShortfallTonnes').textContent = `${data.simulated_shortfall.toFixed(1)} T`;
-        if ($('#simShortfallPct')) $('#simShortfallPct').textContent = `${data.simulated_shortfall_pct.toFixed(1)}% Target Shortfall`;
+        if ($('#simEfficiency')) $('#simEfficiency').textContent = `${(scen.predicted_efficiency * 100).toFixed(1)}%`;
+        if ($('#simPredictedProd')) $('#simPredictedProd').textContent = `${scen.predicted_production.toFixed(1)} T`;
+        if ($('#simShortfallTonnes')) $('#simShortfallTonnes').textContent = `${scen.shortfall_tonnes.toFixed(1)} T`;
+        if ($('#simShortfallPct')) $('#simShortfallPct').textContent = `${scen.shortfall_pct.toFixed(1)}% Target Shortfall`;
+
+        // Plain-English verdict from the backend
+        const sumBox = $('#simSummary');
+        if (sumBox) {
+            const improving = d.production_change_tonnes > 0;
+            sumBox.className = `sim-summary ${improving ? 'sim-summary-good' : (d.production_change_tonnes < 0 ? 'sim-summary-bad' : '')}`;
+            sumBox.textContent = data.summary;
+        }
+
+        // Baseline vs scenario comparison table
+        const cmp = $('#simComparison');
+        if (cmp) {
+            const signed = (v, unit, invert) => {
+                const good = invert ? v < 0 : v > 0;
+                const cls = v === 0 ? '' : (good ? 'delta-good' : 'delta-bad');
+                return `<span class="${cls}">${v > 0 ? '+' : ''}${v.toFixed(1)}${unit}</span>`;
+            };
+            cmp.innerHTML = `
+                <table class="cmp-table">
+                    <thead>
+                        <tr><th>Metric</th><th>Baseline</th><th>Scenario</th><th>Change</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Efficiency</td>
+                            <td class="mono-val">${(base.predicted_efficiency * 100).toFixed(1)}%</td>
+                            <td class="mono-val">${(scen.predicted_efficiency * 100).toFixed(1)}%</td>
+                            <td class="mono-val">${signed(d.efficiency_change_pct_points, ' pp', false)}</td>
+                        </tr>
+                        <tr>
+                            <td>Production</td>
+                            <td class="mono-val">${base.predicted_production.toFixed(1)} T</td>
+                            <td class="mono-val">${scen.predicted_production.toFixed(1)} T</td>
+                            <td class="mono-val">${signed(d.production_change_tonnes, ' T', false)}</td>
+                        </tr>
+                        <tr>
+                            <td>Shortfall</td>
+                            <td class="mono-val">${base.shortfall_tonnes.toFixed(1)} T</td>
+                            <td class="mono-val">${scen.shortfall_tonnes.toFixed(1)} T</td>
+                            <td class="mono-val">${signed(d.shortfall_change_tonnes, ' T', true)}</td>
+                        </tr>
+                        <tr>
+                            <td>Risk tier</td>
+                            <td>${base.risk_tier}</td>
+                            <td>${scen.risk_tier}</td>
+                            <td>${d.risk_tier_changed ? d.risk_tier_change : 'unchanged'}</td>
+                        </tr>
+                        <tr>
+                            <td>Risk flags</td>
+                            <td class="mono-val">${base.risk_flags}</td>
+                            <td class="mono-val">${scen.risk_flags}</td>
+                            <td class="mono-val">${signed(d.risk_flags_change, '', true)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            `;
+        }
+
+        renderRootCauseChart($('#simRootCauses'), scen.root_causes);
     }
 
     function addSimToHistory(data) {
@@ -759,12 +877,12 @@
             tr.innerHTML = `
                 <td>#${state.simHistory.length - idx}</td>
                 <td>${run.scenario_target.toLocaleString()} T</td>
-                <td>${run.simulated_production.toFixed(1)} T</td>
-                <td style="color:${run.simulated_shortfall_pct > 15 ? 'var(--risk-high)' : 'var(--text-secondary)'}; font-weight:700;">
-                    ${run.simulated_shortfall_pct.toFixed(1)}%
+                <td>${run.scenario.predicted_production.toFixed(1)} T</td>
+                <td style="color:${run.scenario.shortfall_pct > 15 ? 'var(--risk-high)' : 'var(--text-secondary)'}; font-weight:700;">
+                    ${run.scenario.shortfall_pct.toFixed(1)}%
                 </td>
-                <td>${(run.simulated_efficiency * 100).toFixed(1)}%</td>
-                <td><span class="stat-chip chip-${run.simulated_risk === 'LOW' ? 'success' : (run.simulated_risk === 'MEDIUM' ? 'cyan' : 'purple')}">${run.simulated_risk}</span></td>
+                <td>${(run.scenario.predicted_efficiency * 100).toFixed(1)}%</td>
+                <td><span class="stat-chip chip-${run.scenario.risk_tier === 'LOW' ? 'success' : (run.scenario.risk_tier === 'MEDIUM' ? 'cyan' : 'purple')}">${run.scenario.risk_tier}</span></td>
             `;
             tbody.appendChild(tr);
         });
